@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-openwhisk_tmp_dir: "{{ lookup('env', 'OPENWHISK_TMP_DIR')|default('/tmp' if ansible_distribution == 'MacOSX' else '/var/tmp', true) }}"
+openwhisk_tmp_dir: "/local/nate-local/openwhisk"
 config_root_dir: "{{ openwhisk_tmp_dir }}/wskconf"
 whisk_logs_dir: "{{ openwhisk_tmp_dir }}/wsklogs"
 coverage_enabled: "{{ lookup('env', 'GRADLE_COVERAGE') | default('false', true) | bool}}"
@@ -49,3 +49,8 @@ container_pool_akka_client: true
 runtimes_enable_concurrency: true
 limit_action_concurrency_max: 500
 namespace_default_limit_action_concurrency_max: 500
+
+
+
+
+ansible_python_interpreter: /usr/bin/python3.0
