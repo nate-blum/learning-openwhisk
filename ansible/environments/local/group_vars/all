@@ -53,4 +53,4 @@ namespace_default_limit_action_concurrency_max: 500
 
 
 
-ansible_python_interpreter: /usr/bin/python3.0
+ansible_python_interpreter: /usr/bin/python3.8
