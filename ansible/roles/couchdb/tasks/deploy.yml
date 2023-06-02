@@ -31,7 +31,7 @@
 
 - name: check if db credentials are valid for CouchDB
   fail: msg="The db provider in your {{ hosts_dir }}/group_vars/all is {{ db.provider }}, it has to be CouchDB, pls double check"
-  when: db.provider != "CouchDB"
+  when: db.provider != CouchDB
 
 - name: ensure directory for persisting db exists
   stat:
