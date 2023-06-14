@@ -58,7 +58,7 @@ object Container {
    *
    * Note: Blackbox containers might not add this sentinel, as we cannot be sure the action developer actually does this.
    */
-  val ACTIVATION_LOG_SENTINEL = "XXX_THE_END_OF_A_WHISK_ACTIVATION_XXX"
+  val ACTIVATION_LOG_SENTINEL = "XXX_THE_FINISH_OF_A_WHISK_ACTIVATION_XXX"
 
   protected[containerpool] val config: ContainerPoolConfig =
     loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
