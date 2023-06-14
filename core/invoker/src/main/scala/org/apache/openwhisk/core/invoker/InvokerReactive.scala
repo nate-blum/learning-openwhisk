@@ -230,7 +230,7 @@ class InvokerReactive(
 
         implicit val transid: TransactionId = msg.transid
 
-        logging.info(this, "Invoker Activation")
+        println("Invoker activation")
 
         //set trace context to continue tracing
         WhiskTracerProvider.tracer.setTraceContext(transid, msg.traceContext)
