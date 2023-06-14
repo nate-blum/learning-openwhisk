@@ -180,7 +180,7 @@ class InvokerReactive(
         action.limits.checkLimits(msg.user)
         action.toExecutableWhiskAction match {
           case Some(executable) =>
-            logging.warn(this, "running action")
+            logging.info(this, "running action")
             pool ! Run(executable, msg)
             Future.successful(())
           case None =>
@@ -230,7 +230,7 @@ class InvokerReactive(
 
         implicit val transid: TransactionId = msg.transid
 
-        logging.warn(this, "Invoker Activation")
+        logging.info(this, "Invoker Activation")
 
         //set trace context to continue tracing
         WhiskTracerProvider.tracer.setTraceContext(transid, msg.traceContext)
