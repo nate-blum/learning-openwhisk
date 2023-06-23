@@ -196,7 +196,7 @@
 
 - name: prepare invoker ports
   set_fact:
-    invoker_ports_to_expose: ["{{ invoker.port + (invoker_index | int) }}:8080", "0.0.0.0:9091"]
+    invoker_ports_to_expose: ["{{ invoker.port + (invoker_index | int) }}:8080", "9091:9091"]
 
 - name: expose additional ports if jmxremote is enabled
   when: jmx.enabled
