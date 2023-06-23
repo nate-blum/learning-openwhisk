@@ -18,19 +18,12 @@
 package org.apache.openwhisk.core.invoker.grpc;
 
 import akka.actor.ActorSystem
-import akka.pattern.ask
 import akka.util.Timeout
-import org.apache.openwhisk.common.{Logging, TransactionId}
-import org.apache.openwhisk.core.WarmUp
-import org.apache.openwhisk.core.connector.{ActivationMessage, Message}
-import org.apache.openwhisk.core.entity.{DocRevision, FullyQualifiedEntityName}
-import org.apache.openwhisk.core.scheduler.queue._
-import org.apache.openwhisk.grpc.{ActivationService, FetchRequest, FetchResponse, RescheduleRequest, RescheduleResponse}
-import spray.json._
+import org.apache.openwhisk.common.Logging
+import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.util.Try
 
 class InvokerServiceImpl()(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
   implicit val requestTimeout: Timeout = Timeout(5.seconds)
