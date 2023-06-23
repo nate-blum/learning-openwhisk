@@ -37,7 +37,6 @@ import org.apache.openwhisk.spi.{Spi, SpiLoader}
 import org.apache.openwhisk.utils.ExecutionContextFactory
 import org.apache.openwhisk.core.invoker.grpc.InvokerServiceImpl
 import org.apache.openwhisk.grpc.InvokerServiceHandler
-import akka.grpc.scaladsl.ServerReflection
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json._
@@ -113,7 +112,7 @@ object Invoker {
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
     logger.info(this, "starting invoker")
 
-    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.withServerReflection(InvokerServiceImpl())
+    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.apply(InvokerServiceImpl())
 
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: IntraConcurrencyLimitConfig =
