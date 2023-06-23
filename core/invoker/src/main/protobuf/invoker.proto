@@ -19,7 +19,7 @@ syntax = "proto3";
 import "google/protobuf/wrappers.proto";
 
 option java_multiple_files = true;
-option java_package = "edu.rutgers.cs.panic.faas.invoker";
+option java_package = "org.apache.openwhisk.grpc";
 option java_outer_classname = "InvokerProto";
 
 package invoker;
