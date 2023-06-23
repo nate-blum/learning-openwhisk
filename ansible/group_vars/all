@@ -206,6 +206,8 @@ invoker:
     become: "{{ invoker_dir_become | default(false) }}"
   confdir: "{{ config_root_dir }}/invoker"
   port: 12001
+  grpc:
+    basePort: 9091
   heap: "{{ invoker_heap | default('2g') }}"
   arguments: "{{ invoker_arguments | default('') }}"
   userMemory: "{{ invoker_user_memory | default('2048m') }}"
