@@ -31,6 +31,7 @@ class InvokerServiceImpl()(implicit actorSystem: ActorSystem, logging: Logging) 
 
   override def NewPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
     logging.info(this, s"Trying to create a new prewarmed container.")
+    Future.successful(NewPrewarmedContainerResponse(true))
   }
 }
 

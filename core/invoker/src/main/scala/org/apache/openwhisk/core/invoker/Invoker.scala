@@ -38,6 +38,7 @@ import org.apache.openwhisk.utils.ExecutionContextFactory
 import org.apache.openwhisk.core.invoker.grpc.InvokerServiceImpl
 import org.apache.openwhisk.grpc.InvokerServiceHandler
 import pureconfig._
+import pureconfig.generic.auto._
 import spray.json._
 
 import scala.concurrent.duration._
