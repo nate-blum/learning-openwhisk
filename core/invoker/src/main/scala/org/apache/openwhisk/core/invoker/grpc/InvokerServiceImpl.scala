@@ -29,7 +29,7 @@ class InvokerServiceImpl()(implicit actorSystem: ActorSystem, logging: Logging) 
   implicit val requestTimeout: Timeout = Timeout(5.seconds)
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
-  override def NewPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
+  override def newPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
     logging.info(this, s"Trying to create a new prewarmed container.")
     Future.successful(NewPrewarmedContainerResponse(true))
   }
