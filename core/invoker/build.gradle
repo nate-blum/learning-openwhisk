@@ -55,6 +55,7 @@ buildscript {
 
 dependencies {
     configurations.all {
+        resolutionStrategy.force "com.lihaoyi:fastparse_${gradle.scala.depVersion}:2.3.0"
         resolutionStrategy.force "com.typesafe.akka:akka-http-core_${gradle.scala.depVersion}:${gradle.akka_http.version}"
         resolutionStrategy.force "com.typesafe.akka:akka-http_${gradle.scala.depVersion}:${gradle.akka_http.version}"
         resolutionStrategy.force "com.typesafe.akka:akka-http2-support_${gradle.scala.depVersion}:${gradle.akka_http.version}"
@@ -67,6 +68,10 @@ dependencies {
     implementation project(':common:scala')
     implementation project(':core:scheduler')
 
+    implementation "io.altoo:akka-kryo-serialization_${gradle.scala.depVersion}:1.0.0"
+    implementation "com.lightbend.akka.management:akka-management-cluster-bootstrap_${gradle.scala.depVersion}:${gradle.akka_management.version}"
+    implementation "com.lightbend.akka.discovery:akka-discovery-kubernetes-api_${gradle.scala.depVersion}:${gradle.akka_management.version}"
+
     implementation ("org.apache.curator:curator-recipes:${gradle.curator.version}") {
         exclude group: 'org.apache.zookeeper', module:'zookeeper'
     }
@@ -75,8 +80,6 @@ dependencies {
         exclude group: 'log4j'
         exclude group: 'jline'
     }
-    implementation "com.lightbend.akka.management:akka-management-cluster-bootstrap_${gradle.scala.depVersion}:${gradle.akka_management.version}"
-    implementation "com.lightbend.akka.discovery:akka-discovery-kubernetes-api_${gradle.scala.depVersion}:${gradle.akka_management.version}"
 }
 
 printProtocLogs.doFirst {

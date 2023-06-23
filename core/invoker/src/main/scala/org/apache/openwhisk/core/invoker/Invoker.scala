@@ -38,7 +38,6 @@ import org.apache.openwhisk.utils.ExecutionContextFactory
 import org.apache.openwhisk.core.invoker.grpc.InvokerServiceImpl
 import org.apache.openwhisk.grpc.InvokerServiceHandler
 import pureconfig._
-import pureconfig.generic.auto._
 import spray.json._
 
 import scala.concurrent.duration._
@@ -104,14 +103,15 @@ object Invoker {
     Kamon.init(newKamonConfig)
   }
 
-  var serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.apply(InvokerServiceImpl())
-
   def main(args: Array[String]): Unit = {
     ConfigMXBean.register()
     implicit val ec = ExecutionContextFactory.makeCachedThreadPoolExecutionContext()
     implicit val actorSystem: ActorSystem =
       ActorSystem(name = "invoker-actor-system", defaultExecutionContext = Some(ec))
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
+
+    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.apply(InvokerServiceImpl())
+
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: IntraConcurrencyLimitConfig =
       loadConfigOrThrow[IntraConcurrencyLimitConfig](ConfigKeys.concurrencyLimit)
