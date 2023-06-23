@@ -127,9 +127,11 @@ object Invoker {
       .map(_.split(",").toSeq)
       .getOrElse(Seq.empty[String])
 
-    Http()
-      .newServerAt("0.0.0.0", 9101)
+    val binding = Http()
+      .newServerAt("172.16.28.31", 9101)
       .bind(serviceHandlers)
+
+    binding.foreach { binding => println(s"gRPC server bound to: ${binding.localAddress}") }
 
     logger.info(this, s"invoker tags: (${tags.mkString(", ")})")
     // Prepare Kamon shutdown
