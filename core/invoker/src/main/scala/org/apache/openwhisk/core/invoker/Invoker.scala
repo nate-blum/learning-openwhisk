@@ -112,7 +112,7 @@ object Invoker {
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
     logger.info(this, "starting invoker")
 
-    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.apply(InvokerServiceImpl())
+    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.withServerReflection(InvokerServiceImpl())
 
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: IntraConcurrencyLimitConfig =
