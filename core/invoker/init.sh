@@ -19,6 +19,6 @@
 ./copyJMXFiles.sh
 
 export INVOKER_OPTS
-INVOKER_OPTS="$INVOKER_OPTS $(./transformEnvironment.sh)"
+INVOKER_OPTS="$INVOKER_OPTS -Dakka.remote.artery.bind.hostname=$(hostname -i) $(./transformEnvironment.sh)"
 
 exec invoker/bin/invoker "$@"

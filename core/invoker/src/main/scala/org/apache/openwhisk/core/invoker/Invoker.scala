@@ -19,6 +19,8 @@ package org.apache.openwhisk.core.invoker
 
 import akka.Done
 import akka.actor.{ActorSystem, CoordinatedShutdown}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import com.typesafe.config.ConfigValueFactory
 import kamon.Kamon
 import org.apache.openwhisk.common.Https.HttpsConfig
@@ -33,6 +35,8 @@ import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.http.{BasicHttpService, BasicRasService}
 import org.apache.openwhisk.spi.{Spi, SpiLoader}
 import org.apache.openwhisk.utils.ExecutionContextFactory
+import org.apache.openwhisk.core.invoker.grpc.InvokerServiceImpl
+import org.apache.openwhisk.grpc.InvokerServiceHandler
 import pureconfig._
 import pureconfig.generic.auto._
 import spray.json._
@@ -100,13 +104,14 @@ object Invoker {
     Kamon.init(newKamonConfig)
   }
 
+  var serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.apply(InvokerServiceImpl())
+
   def main(args: Array[String]): Unit = {
     ConfigMXBean.register()
     implicit val ec = ExecutionContextFactory.makeCachedThreadPoolExecutionContext()
     implicit val actorSystem: ActorSystem =
       ActorSystem(name = "invoker-actor-system", defaultExecutionContext = Some(ec))
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
-    logger.info(this, "starting up invoker")
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: IntraConcurrencyLimitConfig =
       loadConfigOrThrow[IntraConcurrencyLimitConfig](ConfigKeys.concurrencyLimit)
@@ -120,6 +125,10 @@ object Invoker {
       .filter(_ != "")
       .map(_.split(",").toSeq)
       .getOrElse(Seq.empty[String])
+
+    Http()
+      .newServerAt("0.0.0.0", 9101)
+      .bind(serviceHandlers)
 
     logger.info(this, s"invoker tags: (${tags.mkString(", ")})")
     // Prepare Kamon shutdown

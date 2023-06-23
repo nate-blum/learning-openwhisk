@@ -15,13 +15,12 @@
  * limitations under the License.
  */
 
-plugins {
-    id 'application'
-    id 'eclipse'
-    id 'maven'
-    id 'org.scoverage'
-    id 'scala'
-}
+apply plugin: 'scala'
+apply plugin: 'application'
+apply plugin: 'eclipse'
+apply plugin: 'maven'
+apply plugin: 'org.scoverage'
+apply plugin: 'com.lightbend.akka.grpc.gradle'
 
 ext.dockerImageName = 'invoker'
 apply from: '../../gradle/docker.gradle'
@@ -40,7 +39,30 @@ ext.coverageDirs = [
 ]
 distDockerCoverage.dependsOn ':common:scala:scoverageClasses', 'scoverageClasses'
 
+buildscript {
+    repositories {
+        mavenLocal()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        // see https://plugins.gradle.org/plugin/com.lightbend.akka.grpc.gradle
+        // for the currently latest version.
+        classpath 'com.lightbend.akka.grpc:akka-grpc-gradle-plugin:1.0.0'
+    }
+}
+
 dependencies {
+    configurations.all {
+        resolutionStrategy.force "com.typesafe.akka:akka-http-core_${gradle.scala.depVersion}:${gradle.akka_http.version}"
+        resolutionStrategy.force "com.typesafe.akka:akka-http_${gradle.scala.depVersion}:${gradle.akka_http.version}"
+        resolutionStrategy.force "com.typesafe.akka:akka-http2-support_${gradle.scala.depVersion}:${gradle.akka_http.version}"
+        resolutionStrategy.force "com.typesafe.akka:akka-http-spray-json_${gradle.scala.depVersion}:${gradle.akka_http.version}"
+        resolutionStrategy.force "com.typesafe.akka:akka-parsing_${gradle.scala.depVersion}:${gradle.akka_http.version}"
+        resolutionStrategy.force "com.typesafe.akka:akka-http_${gradle.scala.depVersion}:${gradle.akka_http.version}"
+    }
+
     implementation "org.scala-lang:scala-library:${gradle.scala.version}"
     implementation project(':common:scala')
     implementation project(':core:scheduler')
@@ -53,6 +75,21 @@ dependencies {
         exclude group: 'log4j'
         exclude group: 'jline'
     }
+    implementation "com.lightbend.akka.management:akka-management-cluster-bootstrap_${gradle.scala.depVersion}:${gradle.akka_management.version}"
+    implementation "com.lightbend.akka.discovery:akka-discovery-kubernetes-api_${gradle.scala.depVersion}:${gradle.akka_management.version}"
+}
+
+printProtocLogs.doFirst {
+    mkdir "$buildDir"
+    file("$buildDir/akka-grpc-gradle-plugin.log").text = "x"
+    mkdir "$project.rootDir/build"
+    file("$project.rootDir/build/akka-grpc-gradle-plugin.log").text = "x"
+}
+printProtocLogs.configure {
+    mkdir "$buildDir"
+    file("$buildDir/akka-grpc-gradle-plugin.log").text = "x"
+    mkdir "$project.rootDir/build"
+    file("$project.rootDir/build/akka-grpc-gradle-plugin.log").text = "x"
 }
 
 mainClassName = "org.apache.openwhisk.core.invoker.Invoker"
