@@ -129,7 +129,7 @@ object Invoker {
       .getOrElse(Seq.empty[String])
 
     val binding = Http()
-      .newServerAt("172.16.28.31", 9101)
+      .newServerAt("0.0.0.0", 9101)
       .bind(serviceHandlers)
 
     logger.info(this, "supposed to have bound a server")
