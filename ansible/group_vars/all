@@ -208,6 +208,7 @@ invoker:
   port: 12001
   grpc:
     basePort: 9101
+    tls: "{{ invoker_grpc_tls | default(false) }}"
   heap: "{{ invoker_heap | default('2g') }}"
   arguments: "{{ invoker_arguments | default('') }}"
   userMemory: "{{ invoker_user_memory | default('2048m') }}"

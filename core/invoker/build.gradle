@@ -53,6 +53,10 @@ buildscript {
     }
 }
 
+configurations {
+    alpnagent
+}
+
 dependencies {
     configurations.all {
         resolutionStrategy.force "com.lihaoyi:fastparse_${gradle.scala.depVersion}:2.3.0"
