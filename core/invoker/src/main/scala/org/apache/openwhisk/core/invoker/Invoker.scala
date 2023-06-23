@@ -110,6 +110,7 @@ object Invoker {
     implicit val actorSystem: ActorSystem =
       ActorSystem(name = "invoker-actor-system", defaultExecutionContext = Some(ec))
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
+    logger.info(this, "starting invoker")
 
     val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.apply(InvokerServiceImpl())
 
@@ -131,7 +132,8 @@ object Invoker {
       .newServerAt("172.16.28.31", 9101)
       .bind(serviceHandlers)
 
-    binding.foreach { binding => println(s"gRPC server bound to: ${binding.localAddress}") }
+    logger.info(this, "supposed to have bound a server")
+    binding.foreach { binding => logger.info(this, s"gRPC server bound to: ${binding.localAddress}") }
 
     logger.info(this, s"invoker tags: (${tags.mkString(", ")})")
     // Prepare Kamon shutdown
