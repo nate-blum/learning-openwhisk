@@ -295,6 +295,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         adjustPrewarmedContainer(false, false) //in case a prewarm is removed due to health failure or crash
       }
 
+    case CreateNewPrewarmedContainerEvent =>
+      logging.info(this, "creating new prewarmed container")
+
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back
     // 2. The container aged, is destroying itself, and was assigned a job which it had to send back
@@ -703,6 +706,15 @@ object ContainerPool {
             feed: ActorRef,
             prewarmConfig: List[PrewarmingConfig] = List.empty)(implicit logging: Logging) =
     Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
+}
+
+// new prewarmed container event - received by ContainerPool
+class InvokerRPCEvent
+case object CreateNewPrewarmedContainerEvent extends InvokerRPCEvent
+
+class InvokerRPCEventResponse(successful: Boolean) {}
+object InvokerRPCEventResponse {
+  def apply(successful: Boolean): InvokerRPCEventResponse = new InvokerRPCEventResponse(successful)
 }
 
 /** Contains settings needed to perform container prewarming. */

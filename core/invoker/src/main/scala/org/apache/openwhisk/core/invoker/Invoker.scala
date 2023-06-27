@@ -112,8 +112,6 @@ object Invoker {
     implicit val logger = new AkkaLogging(akka.event.Logging.getLogger(actorSystem, this))
     logger.info(this, "starting invoker")
 
-    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.withServerReflection(InvokerServiceImpl())
-
     val poolConfig: ContainerPoolConfig = loadConfigOrThrow[ContainerPoolConfig](ConfigKeys.containerPool)
     val limitConfig: IntraConcurrencyLimitConfig =
       loadConfigOrThrow[IntraConcurrencyLimitConfig](ConfigKeys.concurrencyLimit)
@@ -127,13 +125,6 @@ object Invoker {
       .filter(_ != "")
       .map(_.split(",").toSeq)
       .getOrElse(Seq.empty[String])
-
-    val binding = Http()
-      .newServerAt("0.0.0.0", 50051)
-      .bind(serviceHandlers)
-
-    logger.info(this, "supposed to have bound a server")
-    binding.foreach { binding => logger.info(this, s"gRPC server bound to: ${binding.localAddress}") }
 
     logger.info(this, s"invoker tags: (${tags.mkString(", ")})")
     // Prepare Kamon shutdown
@@ -238,6 +229,12 @@ object Invoker {
     } catch {
       case e: Exception => abort(s"Failed to initialize reactive invoker: ${e.getMessage}")
     }
+
+    val serviceHandlers: HttpRequest => Future[HttpResponse] = InvokerServiceHandler.withServerReflection(InvokerServiceImpl(invoker))
+    val binding = Http()
+      .newServerAt("0.0.0.0", 50051)
+      .bind(serviceHandlers)
+      .foreach { binding => logger.info(this, s"gRPC server bound to: ${binding.localAddress}") }
 
     val port = config.servicePort.toInt
     val httpsConfig =

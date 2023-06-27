@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.invoker
 
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-
 import akka.Done
 import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, CoordinatedShutdown, Props}
 import akka.event.Logging.InfoLevel
@@ -27,7 +26,7 @@ import org.apache.openwhisk.common._
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ack.{MessagingActiveAck, UserEventSender}
 import org.apache.openwhisk.core.connector._
-import org.apache.openwhisk.core.containerpool._
+import org.apache.openwhisk.core.containerpool.{InvokerRPCEventResponse, _}
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
 import org.apache.openwhisk.core.containerpool.v2.{NotSupportedPoolState, TotalContainerPoolState}
 import org.apache.openwhisk.core.database._
@@ -159,6 +158,11 @@ class InvokerReactive(
 
   private val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
+
+  def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[InvokerRPCEventResponse] = {
+    pool ! event
+    Future.successful(InvokerRPCEventResponse(true))
+  }
 
   def handleActivationMessage(msg: ActivationMessage)(implicit transid: TransactionId): Future[Unit] = {
     val namespace = msg.action.path

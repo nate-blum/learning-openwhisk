@@ -296,7 +296,6 @@
       "CONFIG_whisk_invoker_https_clientAuth": "{{ invoker.ssl.clientAuth }}"
       "CONFIG_whisk_invoker_resource_tags": "{% if tags is defined %} '{{ tags | join(',') }}' {% else %} '' {% endif %}"
       "CONFIG_whisk_invoker_dedicated_namespaces": "{% if dedicatedNamespaces is defined %} '{{ dedicatedNamespaces | join(',') }}' {% else %} '' {% endif %}"
-      "CONFIG_whisk_invoker_grpc_tls": "{{ invoker.grpc.tls | default('false') | lower }}"
       "CONFIG_whisk_containerProxy_timeouts_idleContainer": "{{ whisk.containerProxy.timeouts.idleContainer }}"
       "CONFIG_whisk_containerProxy_timeouts_pauseGrace": "{{ whisk.containerProxy.timeouts.pauseGrace  }}"
       "CONFIG_whisk_containerProxy_timeouts_keepingDuration": "{{ whisk.containerProxy.timeouts.keepingDuration }}"

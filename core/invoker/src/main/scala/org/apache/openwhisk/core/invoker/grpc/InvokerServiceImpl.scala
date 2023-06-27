@@ -18,24 +18,25 @@
 package org.apache.openwhisk.core.invoker.grpc;
 
 import akka.actor.ActorSystem
-import akka.util.Timeout
 import org.apache.openwhisk.common.Logging
+import org.apache.openwhisk.core.containerpool.CreateNewPrewarmedContainerEvent
+import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
 import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
-class InvokerServiceImpl()(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
-  implicit val requestTimeout: Timeout = Timeout(5.seconds)
+class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
   override def newPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
     logging.info(this, s"Trying to create a new prewarmed container.")
+    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(CreateNewPrewarmedContainerEvent)
     Future.successful(NewPrewarmedContainerResponse(true))
   }
 }
 
 object InvokerServiceImpl {
-  def apply()(implicit actorSystem: ActorSystem, logging: Logging) =
-    new InvokerServiceImpl()
+  def apply(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) =
+    new InvokerServiceImpl(invokerRef)
 }
