@@ -23,7 +23,6 @@ import org.apache.openwhisk.core.containerpool.CreateNewPrewarmedContainerEvent
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
 import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse}
 
-import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
 class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
