@@ -296,6 +296,13 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case CreateNewPrewarmedContainerEvent =>
+      prewarmConfig.foreach(c => {
+        val vars = c.getClass.getDeclaredFields
+        for (v <- vars) {
+          v.setAccessible(true)
+          println("Field: " + v.getName() + " => " + v.get(c))
+        }
+      })
       logging.info(this, "creating new prewarmed container")
 
     // This message is received for one of these reasons:
