@@ -296,7 +296,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case CreateNewPrewarmedContainerEvent =>
-      prewarmConfig.foreach(c => {
+      ExecManifest.runtimesManifest.runtimes.foreach(c => {
         val vars = c.getClass.getDeclaredFields
         for (v <- vars) {
           v.setAccessible(true)
@@ -713,6 +713,7 @@ object ContainerPool {
             feed: ActorRef,
             prewarmConfig: List[PrewarmingConfig] = List.empty)(implicit logging: Logging) =
     Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
+
 }
 
 // new prewarmed container event - received by ContainerPool
