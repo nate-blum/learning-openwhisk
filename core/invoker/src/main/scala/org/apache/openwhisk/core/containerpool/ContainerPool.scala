@@ -300,6 +300,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         case Some(runtime) =>
           prewarmContainer(CodeExecAsString(runtime.versions.head, "", None), ByteSize(256, SizeUnits.MB), None)
           logging.info(this, "creating new prewarmed python container")
+        case None =>
+          logging.info(this, "could not find python runtime")
       }
 
     // This message is received for one of these reasons:
