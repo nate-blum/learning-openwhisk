@@ -196,6 +196,7 @@ case class WarmedData(override val container: Container,
 // Events received by the actor
 case class Start(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration] = None)
 case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
+case class Warm(action: ExecutableWhiskAction)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
 
@@ -377,6 +378,13 @@ class ContainerProxy(factory: (TransactionId,
       goto(Running) using PreWarmedData(data.container, data.kind, data.memoryLimit, 1, data.expires)
 
     case Event(Remove, data: PreWarmedData) => destroyContainer(data, false)
+
+//    case Event(action: Warm, data: PreWarmedData) =>
+//      data.container
+//        .initialize(
+//
+//        )
+//      goto(Ready) using WarmedData()
 
     // prewarm container failed
     case Event(_: FailureMessage, data: PreWarmedData) =>
@@ -758,6 +766,53 @@ class ContainerProxy(factory: (TransactionId,
   }
 
   /**
+   * Initializes prewarmed container to specific action
+   *
+   * @param container the container to initialize
+   * @param action    the action to initialize it to
+   */
+//  def initializeAndRun(container: Container, action: ExecutableWhiskAction) = {
+//    val actionTimeout = action.limits.timeout.duration
+//    val unlockedArgs =
+//      ContainerProxy.unlockArguments(job.msg.content, job.msg.lockedArgs, ParameterEncryption.singleton)
+//
+//    val (env, parameters) = ContainerProxy.partitionArguments(unlockedArgs, job.msg.initArgs)
+//
+//    val environment = Map(
+//      "namespace" -> job.msg.user.namespace.name.toJson,
+//      "action_name" -> job.msg.action.qualifiedNameWithLeadingSlash.toJson,
+//      "action_version" -> job.msg.action.version.toJson,
+//      "activation_id" -> job.msg.activationId.toString.toJson,
+//      "transaction_id" -> job.msg.transid.id.toJson)
+//
+//    // if the action requests the api key to be injected into the action context, add it here;
+//    // treat a missing annotation as requesting the api key for backward compatibility
+//    val authEnvironment = {
+//      if (job.action.annotations.isTruthy(Annotations.ProvideApiKeyAnnotationName, valueForNonExistent = true)) {
+//        job.msg.user.authkey.toEnvironment.fields
+//      } else Map.empty
+//    }
+//
+//    // Only initialize iff we haven't yet warmed the container
+//    val initialize = stateData match {
+//      case data: WarmedData =>
+//        Future.successful(None)
+//      case _ =>
+//        val owEnv = (authEnvironment ++ environment ++ Map(
+//          "deadline" -> (Instant.now.toEpochMilli + actionTimeout.toMillis).toString.toJson)) map {
+//          case (key, value) => "__OW_" + key.toUpperCase -> value
+//        }
+//
+//        container
+//          .initialize(
+//            job.action.containerInitializer(env ++ owEnv),
+//            actionTimeout,
+//            job.action.limits.concurrency.maxConcurrent,
+//            Some(job.action.toWhiskAction))
+//          .map(Some(_))
+//    }
+
+  /**
    * Runs the job, initialize first if necessary.
    * Completes the job by:
    * 1. sending an activate ack,
@@ -773,6 +828,11 @@ class ContainerProxy(factory: (TransactionId,
   def initializeAndRun(container: Container, job: Run, reschedule: Boolean = false)(
     implicit tid: TransactionId): Future[WhiskActivation] = {
     val actionTimeout = job.action.limits.timeout.duration
+    val vars = job.msg.getClass.getDeclaredFields
+      for (v <- vars) {
+        v.setAccessible(true)
+        println("Field: " + v.getName() + " => " + v.get(job.msg))
+      }
     val unlockedArgs =
       ContainerProxy.unlockArguments(job.msg.content, job.msg.lockedArgs, ParameterEncryption.singleton)
 

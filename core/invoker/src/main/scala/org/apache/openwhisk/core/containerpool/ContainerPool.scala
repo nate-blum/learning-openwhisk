@@ -442,6 +442,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
   }
 
+  /** Creates a new container which is warmed for a specific
+   *
+   *
+   */
+
   /** Removes a container and updates state accordingly. */
   def removeContainer(toDelete: ActorRef) = {
     toDelete ! Remove
