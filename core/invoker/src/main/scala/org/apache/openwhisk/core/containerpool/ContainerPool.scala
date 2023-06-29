@@ -296,14 +296,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case CreateNewPrewarmedContainerEvent =>
-      ExecManifest.runtimesManifest.runtimes.foreach(c => {
-        val vars = c.getClass.getDeclaredFields
-        for (v <- vars) {
-          v.setAccessible(true)
-          println("Field: " + v.getName() + " => " + v.get(c))
-        }
-      })
-      logging.info(this, "creating new prewarmed container")
+      ExecManifest.runtimesManifest.runtimes.find(r => r.name.contains("python")) match {
+        case Some(runtime) =>
+          prewarmContainer(CodeExecAsString(runtime.versions.head, "", None), ByteSize(256, SizeUnits.MB), None)
+          logging.info(this, "creating new prewarmed python container")
+      }
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back
