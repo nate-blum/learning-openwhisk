@@ -28,7 +28,10 @@ service InvokerService {
   rpc NewPrewarmedContainer (NewPrewarmedContainerRequest) returns (NewPrewarmedContainerResponse) {}
 }
 
-message NewPrewarmedContainerRequest {}
+message NewPrewarmedContainerRequest {
+  string actionName = 1;
+  string namespace = 2;
+}
 
 // The response message
 message NewPrewarmedContainerResponse {

@@ -29,7 +29,7 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
   override def newPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
-    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(CreateNewPrewarmedContainerEvent)
+    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(CreateNewPrewarmedContainerEvent(request.actionName, request.namespace))
     Future.successful(NewPrewarmedContainerResponse(true))
   }
 }
