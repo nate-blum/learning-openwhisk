@@ -295,14 +295,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         adjustPrewarmedContainer(false, false) //in case a prewarm is removed due to health failure or crash
       }
 
-    case CreateNewPrewarmedContainerEvent =>
-      ExecManifest.runtimesManifest.runtimes.find(r => r.name.contains("python")) match {
-        case Some(runtime) =>
-          prewarmContainer(CodeExecAsString(runtime.versions.head, "", None), ByteSize(256, SizeUnits.MB), None)
-          logging.info(this, "creating new prewarmed python container")
-        case None =>
-          logging.info(this, "could not find python runtime")
-      }
+//    case CreateNewPrewarmedContainerEvent(actionName, namespace) =>
+//      prewarmContainer()
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back
@@ -721,8 +715,8 @@ object ContainerPool {
 }
 
 // new prewarmed container event - received by ContainerPool
-class InvokerRPCEvent
-case object CreateNewPrewarmedContainerEvent extends InvokerRPCEvent
+trait InvokerRPCEvent
+case class CreateNewPrewarmedContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
 
 class InvokerRPCEventResponse(successful: Boolean) {}
 object InvokerRPCEventResponse {
