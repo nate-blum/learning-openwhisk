@@ -243,6 +243,25 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    */
   override def activate(user: Identity, entityName: FullyQualifiedEntityName, env: Option[Parameters])(
     implicit transid: TransactionId) = {
+    val uvars = user.getClass.getDeclaredFields
+    for (v <- uvars) {
+      v.setAccessible(true)
+      println("user Field: " + v.getName() + " => " + v.get(user))
+    }
+
+    val evars = entityName.getClass.getDeclaredFields
+    for (v <- evars) {
+      v.setAccessible(true)
+      println("entityname Field: " + v.getName() + " => " + v.get(entityName))
+    }
+
+    val envars = env.getClass.getDeclaredFields
+    for (v <- envars) {
+      v.setAccessible(true)
+      println("entityname Field: " + v.getName() + " => " + v.get(env))
+    }
+
+
     parameter(
       'blocking ? false,
       'result ? false,
