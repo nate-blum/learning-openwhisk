@@ -160,7 +160,24 @@ class InvokerReactive(
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
 
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[InvokerRPCEventResponse] = {
-    pool ! event
+    event match {
+      case CreateNewPrewarmedContainerEvent(actionName, namespace) =>
+        val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
+        implicit val transid = TransactionId.invoker
+        WhiskAction
+          .get(entityStore, actionid.id, actionid.rev, fromCache = false)
+          .flatMap(action => {
+            val avars = action.getClass.getDeclaredFields
+            for (v <- avars) {
+              v.setAccessible(true)
+              println("entityname Field: " + v.getName() + " => " + v.get(action))
+            }
+            Future.successful()
+          })
+//        pool ! event
+      case _ =>
+        pool ! event
+    }
     Future.successful(InvokerRPCEventResponse(true))
   }
 
