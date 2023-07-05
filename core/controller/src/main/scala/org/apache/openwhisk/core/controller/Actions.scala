@@ -258,7 +258,7 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
     val envars = env.getClass.getDeclaredFields
     for (v <- envars) {
       v.setAccessible(true)
-      println("entityname Field: " + v.getName() + " => " + v.get(env))
+      println("env Field: " + v.getName() + " => " + v.get(env))
     }
 
 
@@ -275,6 +275,12 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
               onComplete(entitleReferencedEntitiesMetaData(user, Privilege.ACTIVATE, Some(action.exec))) {
                 case Success(_) =>
                   val actionWithMergedParams = env.map(action.inherit(_)) getOrElse action
+
+                  val avars = actionWithMergedParams.getClass.getDeclaredFields
+                  for (v <- avars) {
+                    v.setAccessible(true)
+                    println("awmp Field: " + v.getName() + " => " + v.get(actionWithMergedParams))
+                  }
 
                   // incoming parameters may not override final parameters (i.e., parameters with already defined values)
                   // on an action once its parameters are resolved across package and binding
