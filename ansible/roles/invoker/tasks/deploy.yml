@@ -199,7 +199,8 @@
     invoker_ports_to_expose: ['{{ invoker.port + (invoker_index | int) }}:8080', '50051:50051']
 
 - name: debug
-  ansible.builtin.debug: "echo {{ invoker_ports_to_expose }}"
+  ansible.builtin.debug:
+    msg: {{invoker_ports_to_expose}}
 
 - name: expose additional ports if jmxremote is enabled
   when: jmx.enabled
@@ -207,7 +208,8 @@
     invoker_ports_to_expose: "{{ invoker_ports_to_expose }} + [ \"{{ jmx.basePortInvoker + (invoker_index | int) }}:{{ jmx.basePortInvoker + (invoker_index | int) }}\" ] + [ \"{{ jmx.rmiBasePortInvoker + (invoker_index | int) }}:{{ jmx.rmiBasePortInvoker + (invoker_index | int) }}\" ]"
 
 - name: debug2
-  ansible.builtin.debug: "echo {{ invoker_ports_to_expose }}"
+  ansible.builtin.debug:
+    msg: {{invoker_ports_to_expose}}
 
 - name: Load config from template
   set_fact:
