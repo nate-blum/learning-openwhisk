@@ -276,9 +276,13 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
       processBufferOrFeed()
 
-    case PreWarmCompleted(data: PreWarmedData, isFullWarm: Boolean) =>
+    case NeedWork(data: PreWarmedData) =>
       prewarmStartingPool = prewarmStartingPool - sender()
-      if (!isFullWarm) prewarmedPool = prewarmedPool + (sender() -> data)
+      prewarmedPool = prewarmedPool + (sender() -> data)
+
+    case WarmCompleted(data: WarmedData) =>
+      prewarmStartingPool = prewarmStartingPool - sender()
+      freePool = freePool + (sender() -> data)
 
     // Container got removed
     case ContainerRemoved(replacePrewarm) =>
