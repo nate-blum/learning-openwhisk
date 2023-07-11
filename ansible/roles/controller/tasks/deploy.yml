@@ -121,10 +121,7 @@
     jmx_remote_rmi_port:
       "{{ jmx.rmiBasePortController + (controller_index|int) }}"
   set_fact:
-    ports_to_expose:
-      - "{{ controller.basePort + (controller_index | int) }}:8080"
-      - "{{ jmx_remote_port }}:{{ jmx_remote_port }}"
-      - "{{ jmx_remote_rmi_port }}:{{ jmx_remote_rmi_port }}"
+    ports_to_expose: ["{{ controller.basePort + (controller_index | int) }}:8080", "{{ jmx_remote_port }}:{{ jmx_remote_port }}", "{{ jmx_remote_rmi_port }}:{{ jmx_remote_rmi_port }}"]
     controller_args: >-
       {{ controller.arguments }}
       {{ jmx.jvmCommonArgs }}
@@ -425,6 +422,11 @@
 - name: wait some time for controller to gracefully shutdown the consumer for activation ack
   shell: sleep 5s
   when: zeroDowntimeDeployment.enabled == true
+
+
+- name: debug
+  ansible.builtin.debug:
+    msg: "{{ports_to_expose}}"
 
 - name: (re)start controller
   docker_container:
