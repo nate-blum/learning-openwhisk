@@ -196,7 +196,7 @@
 
 - name: prepare invoker ports
   set_fact:
-    invoker_ports_to_expose: ['{{ invoker.port + (invoker_index | int) }}:8080', '50051:50051']
+    invoker_ports_to_expose: "['{{ invoker.port + (invoker_index | int) }}:8080'] + ['50051:50051']"
 
 - name: debug
   ansible.builtin.debug:
