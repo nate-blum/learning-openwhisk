@@ -22,7 +22,7 @@
 
 - name: add akka port to ports_to_expose
   set_fact:
-    ports_to_expose: {{ ports_to_expose }} + [ "{{ (controller.akka.cluster.basePort + (controller_index | int)) }}:", "{{ controller.akka.cluster.bindPort }}" ]
+    ports_to_expose: "{{ ports_to_expose }}" + [ "{{ (controller.akka.cluster.basePort + (controller_index | int)) }}:", "{{ controller.akka.cluster.bindPort }}" ]
 
 - name: add seed nodes to controller environment
   set_fact:
