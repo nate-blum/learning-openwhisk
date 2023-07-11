@@ -20,9 +20,13 @@
 #  environment to cause the controller to join a specified akka cluster
 #
 
+- name: set port
+  set_fact:
+    akka_port: ['{{ (controller.akka.cluster.basePort + (controller_index | int)) }}:{{ controller.akka.cluster.bindPort }}']
+
 - name: add akka port to ports_to_expose
   set_fact:
-    ports_to_expose: "{{ ports_to_expose }} + [ '{{ (controller.akka.cluster.basePort + (controller_index | int)) }}:{{ controller.akka.cluster.bindPort }}' ]"
+    ports_to_expose: "{{ ports_to_expose }} + {{ akka_port }}"
 
 - name: add seed nodes to controller environment
   set_fact:
