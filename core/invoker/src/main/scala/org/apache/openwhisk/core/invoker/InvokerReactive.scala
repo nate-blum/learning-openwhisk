@@ -26,12 +26,13 @@ import org.apache.openwhisk.common._
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ack.{MessagingActiveAck, UserEventSender}
 import org.apache.openwhisk.core.connector._
-import org.apache.openwhisk.core.containerpool.{InvokerRPCEventResponse, _}
+import org.apache.openwhisk.core.containerpool.{Run, _}
 import org.apache.openwhisk.core.containerpool.logging.LogStoreProvider
 import org.apache.openwhisk.core.containerpool.v2.{NotSupportedPoolState, TotalContainerPoolState}
 import org.apache.openwhisk.core.database._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.invoker.Invoker.InvokerEnabled
+import org.apache.openwhisk.core.invoker.grpc.{InvokerRPCEvent, NewPrewarmedContainerEvent}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.spi.SpiLoader
@@ -159,26 +160,27 @@ class InvokerReactive(
   private val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
 
-  def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[InvokerRPCEventResponse] = {
+  def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
-      case CreateNewPrewarmedContainerEvent(actionName, namespace) =>
+      case NewPrewarmedContainerEvent(actionName, namespace) =>
         val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
-        implicit val transid = TransactionId.invoker
+        implicit val transid: TransactionId = TransactionId.invoker
         WhiskAction
           .get(entityStore, actionid.id, actionid.rev, fromCache = false)
           .flatMap(action => {
-            val avars = action.getClass.getDeclaredFields
-            for (v <- avars) {
-              v.setAccessible(true)
-              println("entityname Field: " + v.getName() + " => " + v.get(action))
+            action.toExecutableWhiskAction match {
+              case Some(executable) =>
+                pool ! BeginFullWarm(executable, null, transid)
+                Future.successful()
+              case None =>
+                logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
+                Future.failed(new IllegalStateException("non-executable action reached the invoker"))
             }
-            Future.successful(())
           })
-//        pool ! event
       case _ =>
         pool ! event
+        Future.successful()
     }
-    Future.successful(InvokerRPCEventResponse(true))
   }
 
   def handleActivationMessage(msg: ActivationMessage)(implicit transid: TransactionId): Future[Unit] = {

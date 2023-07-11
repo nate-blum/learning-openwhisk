@@ -152,8 +152,6 @@ case class PreWarmedData(override val container: Container,
   override def nextRun(r: Run) =
     WarmingData(container, r.msg.user.namespace.name, r.action, Instant.now, 1)
   def isExpired(): Boolean = expires.exists(_.isOverdue())
-  def warm(w: Warm) =
-    WarmingData(container, EntityName(w.action.namespace.namespace), w.action, Instant.now)
 }
 
 /** type representing a prewarm (running, but not used) container that is being initialized (for a specific action + invocation namespace) */
@@ -198,7 +196,7 @@ case class WarmedData(override val container: Container,
 // Events received by the actor
 case class Start(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration] = None)
 case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
-case class Warm(action: ExecutableWhiskAction, transid: TransactionId)
+case class BeginFullWarm(action: ExecutableWhiskAction, ttl: Option[FiniteDuration], transid: TransactionId)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
 
@@ -207,7 +205,9 @@ case class NeedWork(data: ContainerData)
 case object ContainerPaused
 case class ContainerRemoved(replacePrewarm: Boolean) // when container is destroyed
 case object RescheduleJob // job is sent back to parent and could not be processed because container is being destroyed
-case class PreWarmCompleted(data: PreWarmedData)
+case class PreWarmCompleted(data: PreWarmedData, isFullWarm: Boolean)
+case class Warm(container: Container, action: ExecutableWhiskAction, transid: TransactionId)
+case class WarmCompleted(data: WarmedData)
 case class InitCompleted(data: WarmedData)
 case object RunCompleted
 
@@ -293,7 +293,24 @@ class ContainerProxy(factory: (TransactionId,
         poolConfig.cpuShare(job.memoryLimit),
         None)
         .map(container =>
-          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, expires = job.ttl.map(_.fromNow))))
+          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, expires = job.ttl.map(_.fromNow)), false))
+        .pipeTo(self)
+
+      goto(Starting)
+
+    case Event(job: BeginFullWarm, _) =>
+      val kind = job.action.exec.kind
+      val memory = job.action.limits.memory.megabytes.MB
+      factory(
+        TransactionId.invokerWarmup,
+        ContainerProxy.containerName(instance, "prewarm", kind),
+        job.action.exec.image,
+        job.action.exec.pull,
+        memory,
+        poolConfig.cpuShare(memory),
+        None)
+        .map(container =>
+          Warm(container, job.action, job.transid))
         .pipeTo(self)
 
       goto(Starting)
@@ -321,7 +338,7 @@ class ContainerProxy(factory: (TransactionId,
             // the container is ready to accept an activation; register it as PreWarmed; this
             // normalizes the life cycle for containers and their cleanup when activations fail
             self ! PreWarmCompleted(
-              PreWarmedData(container, job.action.exec.kind, job.action.limits.memory.megabytes.MB, 1, expires = None))
+              PreWarmedData(container, job.action.exec.kind, job.action.limits.memory.megabytes.MB, 1, expires = None), false)
 
           case Failure(t) =>
             // the container did not come up cleanly, so disambiguate the failure mode and then cleanup
@@ -359,8 +376,19 @@ class ContainerProxy(factory: (TransactionId,
   when(Starting) {
     // container was successfully obtained
     case Event(completed: PreWarmCompleted, _) =>
-      context.parent ! NeedWork(completed.data)
+      context.parent ! completed
       goto(Started) using completed.data
+
+    case Event(w: Warm, _) =>
+      context.parent ! PreWarmCompleted(null, true)
+      initialize(w.container, w.action, w.transid)
+        .map(data => WarmCompleted(data))
+        .pipeTo(self)
+      stay
+
+    case Event(w: WarmCompleted, _) =>
+      val newData = w.data.withoutResumeRun()
+      goto(if (requestWork(w.data) || activeCount > 0) Running else Ready) using newData
 
     // container creation failed
     case Event(_: FailureMessage, _) =>
@@ -380,11 +408,6 @@ class ContainerProxy(factory: (TransactionId,
       goto(Running) using PreWarmedData(data.container, data.kind, data.memoryLimit, 1, data.expires)
 
     case Event(Remove, data: PreWarmedData) => destroyContainer(data, false)
-
-    case Event(w: Warm, data: PreWarmedData) =>
-      implicit val transid = w.transid
-      initialize(data.container, w.action)
-      goto(Ready) using data.warm(w)
 
     // prewarm container failed
     case Event(_: FailureMessage, data: PreWarmedData) =>
@@ -771,7 +794,7 @@ class ContainerProxy(factory: (TransactionId,
    * @param container the container to initialize
    * @param action    the action to initialize it to
    */
-  def initialize(container: Container, action: ExecutableWhiskAction)(implicit transid: TransactionId) = {
+  def initialize(container: Container, action: ExecutableWhiskAction, transid: TransactionId): Future[WarmedData] = {
     val actionTimeout = action.limits.timeout.duration
 
     val environment = Map(
@@ -781,7 +804,7 @@ class ContainerProxy(factory: (TransactionId,
       "activation_id" -> None,
       "transaction_id" -> transid.id.toJson)
 
-
+    println("initialize environment")
     println(environment)
 //    container
 //      .initialize(
@@ -790,6 +813,7 @@ class ContainerProxy(factory: (TransactionId,
 //        action.limits.concurrency.maxConcurrent,
 //        Some(action.toWhiskAction))
 //      .map(Some(_))
+    null
   }
 
   /**
@@ -824,6 +848,7 @@ class ContainerProxy(factory: (TransactionId,
       "action_version" -> job.msg.action.version.toJson,
       "activation_id" -> job.msg.activationId.toString.toJson,
       "transaction_id" -> job.msg.transid.id.toJson)
+    println("initializeAndRunEnvironment")
     println(environment)
 
     // if the action requests the api key to be injected into the action context, add it here;

@@ -114,6 +114,21 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def receive: Receive = {
+    case w: BeginFullWarm =>
+      val kind = w.action.exec.kind
+      val memory = w.action.limits.memory.megabytes.MB
+      if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, memory)) {
+        val newContainer = childFactory(context)
+        prewarmStartingPool = prewarmStartingPool + (newContainer -> (kind, memory))
+        val ttl =
+          prewarmConfig.find(pc => pc.memoryLimit == memory && pc.exec.kind == kind).flatMap(_.reactive.map(_.ttl))
+        newContainer ! BeginFullWarm(w.action, ttl, w.transid)
+      } else {
+        logging.warn(
+          this,
+          s"Cannot create prewarm container due to reaching the invoker memory limit: ${poolConfig.userMemory.toMB}")
+      }
+
     // A job to run on a container
     //
     // Run messages are received either via the feed or from child containers which cannot process
@@ -260,10 +275,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         freePool = freePool - sender()
       }
       processBufferOrFeed()
-    // Container is prewarmed and ready to take work
-    case NeedWork(data: PreWarmedData) =>
+
+    case PreWarmCompleted(data: PreWarmedData, isFullWarm: Boolean) =>
       prewarmStartingPool = prewarmStartingPool - sender()
-      prewarmedPool = prewarmedPool + (sender() -> data)
+      if (!isFullWarm) prewarmedPool = prewarmedPool + (sender() -> data)
 
     // Container got removed
     case ContainerRemoved(replacePrewarm) =>
@@ -294,9 +309,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       if (replacePrewarm) {
         adjustPrewarmedContainer(false, false) //in case a prewarm is removed due to health failure or crash
       }
-
-//    case CreateNewPrewarmedContainerEvent(actionName, namespace) =>
-//      prewarmContainer()
 
     // This message is received for one of these reasons:
     // 1. Container errored while resuming a warm container, could not process the job, and sent the job back
@@ -712,15 +724,6 @@ object ContainerPool {
             prewarmConfig: List[PrewarmingConfig] = List.empty)(implicit logging: Logging) =
     Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
 
-}
-
-// new prewarmed container event - received by ContainerPool
-trait InvokerRPCEvent
-case class CreateNewPrewarmedContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
-
-class InvokerRPCEventResponse(successful: Boolean) {}
-object InvokerRPCEventResponse {
-  def apply(successful: Boolean): InvokerRPCEventResponse = new InvokerRPCEventResponse(successful)
 }
 
 /** Contains settings needed to perform container prewarming. */

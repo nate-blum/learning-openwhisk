@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.invoker.grpc;
 
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.Logging
-import org.apache.openwhisk.core.containerpool.CreateNewPrewarmedContainerEvent
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
 import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse}
 
@@ -29,7 +28,7 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
   override def newPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
-    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(CreateNewPrewarmedContainerEvent(request.actionName, request.namespace))
+    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(NewPrewarmedContainerEvent(request.actionName, "guest"))
     Future.successful(NewPrewarmedContainerResponse(true))
   }
 }
@@ -38,3 +37,7 @@ object InvokerServiceImpl {
   def apply(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) =
     new InvokerServiceImpl(invokerRef)
 }
+
+// new prewarmed container event - received by ContainerPool
+trait InvokerRPCEvent
+case class NewPrewarmedContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
