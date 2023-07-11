@@ -137,7 +137,7 @@ jmx:
   basePortController: 15000
   rmiBasePortController: 16000
   basePortInvoker: 17000
-  rmiBasePortInvoker: 18001
+  rmiBasePortInvoker: 18000
   basePortScheduler: 21000
   rmiBasePortScheduler: 22000
   user: "{{ jmxuser | default('jmxuser') }}"
