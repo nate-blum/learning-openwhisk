@@ -171,7 +171,7 @@ class InvokerReactive(
             action.toExecutableWhiskAction match {
               case Some(executable) =>
                 pool ! BeginFullWarm(executable, null, transid)
-                Future.successful()
+                Future.successful(())
               case None =>
                 logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
                 Future.failed(new IllegalStateException("non-executable action reached the invoker"))
@@ -179,7 +179,7 @@ class InvokerReactive(
           })
       case _ =>
         pool ! event
-        Future.successful()
+        Future.successful(())
     }
   }
 
