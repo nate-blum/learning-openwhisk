@@ -200,7 +200,7 @@
 
 - name: debug
   ansible.builtin.debug:
-    msg: {{invoker_ports_to_expose}}
+    msg: "{{invoker_ports_to_expose}}"
 
 - name: expose additional ports if jmxremote is enabled
   when: jmx.enabled
@@ -209,7 +209,7 @@
 
 - name: debug2
   ansible.builtin.debug:
-    msg: {{invoker_ports_to_expose}}
+    msg: "{{invoker_ports_to_expose}}"
 
 - name: Load config from template
   set_fact:
