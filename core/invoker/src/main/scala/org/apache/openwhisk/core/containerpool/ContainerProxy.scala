@@ -381,7 +381,8 @@ class ContainerProxy(factory: (TransactionId,
 
     case Event(w: Warm, _) =>
       context.parent ! PreWarmCompleted(null, true)
-      initialize(w.container, w.action, w.transid)
+      implicit val transid = w.transid
+      initialize(w.container, w.action)
         .map(data => WarmCompleted(data))
         .pipeTo(self)
       stay
@@ -794,26 +795,26 @@ class ContainerProxy(factory: (TransactionId,
    * @param container the container to initialize
    * @param action    the action to initialize it to
    */
-  def initialize(container: Container, action: ExecutableWhiskAction, transid: TransactionId): Future[WarmedData] = {
+  def initialize(container: Container, action: ExecutableWhiskAction)(implicit transid: TransactionId): Future[WarmedData] = {
     val actionTimeout = action.limits.timeout.duration
 
     val environment = Map(
       "namespace" -> action.namespace.toJson,
-      "action_name" -> action.name.toJson,
+      "action_name" -> action.fullyQualifiedName(false).qualifiedNameWithLeadingSlash.toJson,
       "action_version" -> action.version.toJson,
-      "activation_id" -> None,
+      "activation_id" -> JsString(""),
       "transaction_id" -> transid.id.toJson)
 
     println("initialize environment")
     println(environment)
-//    container
-//      .initialize(
-//        action.containerInitializer(env),
-//        actionTimeout,
-//        action.limits.concurrency.maxConcurrent,
-//        Some(action.toWhiskAction))
-//      .map(Some(_))
-    null
+    container
+      .initialize(
+        action.containerInitializer(environment),
+        actionTimeout,
+        action.limits.concurrency.maxConcurrent,
+        Some(action.toWhiskAction))
+      .flatMap(_ =>
+        Future.successful(WarmedData(container, EntityName(action.namespace.namespace), action, null)))
   }
 
   /**
