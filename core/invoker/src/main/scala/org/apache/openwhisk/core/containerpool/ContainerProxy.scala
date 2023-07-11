@@ -274,6 +274,8 @@ class ContainerProxy(factory: (TransactionId,
   //track buffer processing state to avoid extra transitions near end of buffer - this provides a pseudo-state between Running and Ready
   var bufferProcessing = false
 
+  var isCreatedByRPC = false
+
   //keep a separate count to avoid confusion with ContainerState.activeActivationCount that is tracked/modified only in ContainerPool
   var activeCount = 0;
   var healthPingActor: Option[ActorRef] = None //setup after prewarm starts
@@ -302,9 +304,10 @@ class ContainerProxy(factory: (TransactionId,
       val kind = job.action.exec.kind
       val memory = job.action.limits.memory.megabytes.MB
       logging.info(this, "beginning full warm")
+      isCreatedByRPC = true
       factory(
         TransactionId.invokerWarmup,
-        ContainerProxy.containerName(instance, "prewarm", kind),
+        ContainerProxy.containerName(instance, "warm", s"${kind}_${job.action.name.name}"),
         job.action.exec.image,
         job.action.exec.pull,
         memory,
@@ -452,6 +455,7 @@ class ContainerProxy(factory: (TransactionId,
 
     // Run was successful
     case Event(RunCompleted, data: WarmedData) =>
+      logging.info(this, s"successfully executed function ${data.action.name.name}, ${if (isCreatedByRPC) "rpc created" else "not rpc created"}")
       activeCount -= 1
       val newData = data.withoutResumeRun()
       //if there are items in runbuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
@@ -809,8 +813,6 @@ class ContainerProxy(factory: (TransactionId,
       "activation_id" -> JsString(""),
       "transaction_id" -> transid.id.toJson)
 
-    println("initialize environment")
-    println(environment)
     container
       .initialize(
         action.containerInitializer(environment),
@@ -855,8 +857,6 @@ class ContainerProxy(factory: (TransactionId,
       "action_version" -> job.msg.action.version.toJson,
       "activation_id" -> job.msg.activationId.toString.toJson,
       "transaction_id" -> job.msg.transid.id.toJson)
-    println("initializeAndRunEnvironment")
-    println(environment)
 
     // if the action requests the api key to be injected into the action context, add it here;
     // treat a missing annotation as requesting the api key for backward compatibility
