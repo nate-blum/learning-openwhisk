@@ -128,6 +128,11 @@
       -Djava.rmi.server.hostname={{ inventory_hostname }}
       -Dcom.sun.management.jmxremote.rmi.port={{ jmx_remote_rmi_port }}
       -Dcom.sun.management.jmxremote.port={{ jmx_remote_port }}
+      
+
+- name: debug
+  ansible.builtin.debug:
+    msg: "{{ports_to_expose}}"
 
 - name: Load config from template
   set_fact:
