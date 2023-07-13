@@ -82,4 +82,17 @@ dependencies {
     }
 }
 
+printProtocLogs.doFirst {
+    mkdir "$buildDir"
+    file("$buildDir/akka-grpc-gradle-plugin.log").text = "x"
+    mkdir "$project.rootDir/build"
+    file("$project.rootDir/build/akka-grpc-gradle-plugin.log").text = "x"
+}
+printProtocLogs.configure {
+    mkdir "$buildDir"
+    file("$buildDir/akka-grpc-gradle-plugin.log").text = "x"
+    mkdir "$project.rootDir/build"
+    file("$project.rootDir/build/akka-grpc-gradle-plugin.log").text = "x"
+}
+
 mainClassName = "org.apache.openwhisk.core.invoker.Invoker"
