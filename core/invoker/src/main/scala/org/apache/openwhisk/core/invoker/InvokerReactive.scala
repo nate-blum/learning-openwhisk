@@ -177,7 +177,7 @@ class InvokerReactive(
                         val numCores = Runtime.getRuntime.availableProcessors()
                         val pin: Seq[Int] = Seq()
                         for (a <- 0 until numCores)
-                            if ((v >> a) & 1 == 1) pin :+ a
+                            if ((v >> a) % 2 == 1) pin :+ a
                         "--cpuset-cpus" -> Set(pin.map(p => p.toString).mkString(","))
                     }
                 }
