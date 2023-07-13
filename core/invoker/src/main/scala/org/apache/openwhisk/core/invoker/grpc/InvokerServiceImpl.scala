@@ -20,7 +20,7 @@ package org.apache.openwhisk.core.invoker.grpc;
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
-import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse}
+import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse, SetAllowOpenWhiskToFreeMemoryRequest, SetAllowOpenWhiskToFreeMemoryResponse}
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
