@@ -299,6 +299,8 @@ class ContainerProxy(factory: (TransactionId,
       goto(Starting)
 
     case Event(job: BeginFullWarm, _) =>
+      println("begin full warm params")
+      println(job.params)
       val kind = job.action.exec.kind
       val memory = job.action.limits.memory.megabytes.MB
       logging.info(this, "beginning full warm")

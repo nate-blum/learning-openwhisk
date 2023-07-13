@@ -164,8 +164,6 @@ class InvokerReactive(
     event match {
       case NewPrewarmedContainerEvent(actionName, namespace, params) =>
         println("new prewarmed container event")
-        println(actionName)
-        println(params)
         val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
         implicit val transid: TransactionId = TransactionId.invoker
         WhiskAction
@@ -175,22 +173,15 @@ class InvokerReactive(
               case Some(executable) =>
                 val args: Map[String, Set[String]] = params.map {
                   case (k, v: Long) =>
-                    println("param map")
-                    println(k)
                     k match {
                       case "pin" =>
                         val numCores = Runtime.getRuntime.availableProcessors()
-                        println("numCores")
-                        println(numCores)
                         var pin: Seq[Int] = Seq()
                         for (a <- 0 until numCores)
                             if ((v >> a) % 2 == 1) pin = pin :+ a
                         "--cpuset-cpus" -> Set(pin.map(p => p.toString).mkString(","))
                     }
                 }
-
-                println("cpuset")
-                println(args)
 
                 pool ! BeginFullWarm(executable, args, transid)
                 Future.successful(())
