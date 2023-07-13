@@ -27,9 +27,18 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
+  def handleEvent(event: InvokerRPCEvent): Future[Any] = {
+    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(event)
+  }
+
   override def newPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
-    invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(NewPrewarmedContainerEvent(request.actionName, "guest"))
+    handleEvent(NewPrewarmedContainerEvent(request.actionName, "guest", request.params))
     Future.successful(NewPrewarmedContainerResponse(true))
+  }
+
+  override def setAllowOpenWhiskToFreeMemory(request: SetAllowOpenWhiskToFreeMemoryRequest): Future[SetAllowOpenWhiskToFreeMemoryResponse] = {
+    handleEvent(SetAllowOpenWhiskToFreeMemoryEvent(request.setValue))
+    Future.successful(SetAllowOpenWhiskToFreeMemoryResponse(true))
   }
 }
 
@@ -40,4 +49,5 @@ object InvokerServiceImpl {
 
 // new prewarmed container event - received by ContainerPool
 trait InvokerRPCEvent
-case class NewPrewarmedContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
+case class NewPrewarmedContainerEvent(actionName: String, namespace: String, params: Map[String, Long]) extends InvokerRPCEvent
+case class SetAllowOpenWhiskToFreeMemoryEvent(setValue: Boolean) extends InvokerRPCEvent

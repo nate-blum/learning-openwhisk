@@ -23,6 +23,7 @@ import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
+import org.apache.openwhisk.core.invoker.grpc.SetAllowOpenWhiskToFreeMemoryEvent
 
 import scala.annotation.tailrec
 import scala.collection.immutable
@@ -63,6 +64,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   import ContainerPool.memoryConsumptionOf
 
   implicit val ec = context.dispatcher
+
+  var allowOpenWhiskToFreeMemory = false
 
   var freePool = immutable.Map.empty[ActorRef, ContainerData]
   var busyPool = immutable.Map.empty[ActorRef, ContainerData]
@@ -120,14 +123,17 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, memory)) {
         val newContainer = childFactory(context)
         prewarmStartingPool = prewarmStartingPool + (newContainer -> (kind, memory))
-        val ttl =
-          prewarmConfig.find(pc => pc.memoryLimit == memory && pc.exec.kind == kind).flatMap(_.reactive.map(_.ttl))
-        newContainer ! BeginFullWarm(w.action, ttl, w.transid)
+
+        newContainer ! w
       } else {
         logging.warn(
           this,
           s"Cannot create prewarm container due to reaching the invoker memory limit: ${poolConfig.userMemory.toMB}")
       }
+
+    case SetAllowOpenWhiskToFreeMemoryEvent(setValue) =>
+      allowOpenWhiskToFreeMemory = setValue
+      logging.info(this, s"now ${if (setValue) "allowing" else "not allowing"} openwhisk to kill containers to free memory")
 
     // A job to run on a container
     //
@@ -167,23 +173,30 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     container
                   } else None
                 })
-            .orElse(
-              // Remove a container and create a new one for the given job
-              ContainerPool
-              // Only free up the amount, that is really needed to free up
-                .remove(freePool, Math.min(r.action.limits.memory.megabytes, memoryConsumptionOf(freePool)).MB)
-                .map(removeContainer)
-                // If the list had at least one entry, enough containers were removed to start the new container. After
-                // removing the containers, we are not interested anymore in the containers that have been removed.
-                .headOption
-                .map(_ =>
-                  takePrewarmContainer(r.action)
-                    .map(container => (container, "recreatedPrewarm"))
-                    .getOrElse {
-                      val container = (createContainer(memory), "recreated")
-                      incrementColdStartCount(kind, memory)
-                      container
-                  }))
+            .orElse {
+              if (allowOpenWhiskToFreeMemory)
+                // Remove a container and create a new one for the given job
+                ContainerPool
+                  // Only free up the amount, that is really needed to free up
+                  .remove(freePool, Math.min(r.action.limits.memory.megabytes, memoryConsumptionOf(freePool)).MB)
+                  .map(removeContainer)
+                  // If the list had at least one entry, enough containers were removed to start the new container. After
+                  // removing the containers, we are not interested anymore in the containers that have been removed.
+                  .headOption
+                  .map(_ =>
+                    takePrewarmContainer(r.action)
+                      .map(container => (container, "recreatedPrewarm"))
+                      .getOrElse {
+                        val container = (createContainer(memory), "recreated")
+                        incrementColdStartCount(kind, memory)
+                        container
+                      })
+              else {
+                logging.info(this,
+                  s"currently disallowing openwhisk from killing containers to free memory, must reschedule invocation of function ${r.action.name.name}")
+                None
+              }
+            }
 
         createdContainer match {
           case Some(((actor, data), containerState)) =>
@@ -451,11 +464,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           (ref, data)
       }
   }
-
-  /** Creates a new container which is warmed for a specific
-   *
-   *
-   */
 
   /** Removes a container and updates state accordingly. */
   def removeContainer(toDelete: ActorRef) = {

@@ -20,8 +20,8 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.Actor
 import akka.actor.ActorRef
 import akka.actor.Cancellable
-import java.time.Instant
 
+import java.time.{Duration, Instant}
 import akka.actor.Status.{Failure => FailureMessage}
 import akka.actor.{FSM, Props, Stash}
 import akka.event.Logging.InfoLevel
@@ -34,9 +34,9 @@ import akka.io.Tcp.Connected
 import akka.pattern.pipe
 import pureconfig.loadConfigOrThrow
 import pureconfig.generic.auto._
+
 import java.net.InetSocketAddress
 import java.net.SocketException
-
 import org.apache.openwhisk.common.MetricEmitter
 import org.apache.openwhisk.common.TransactionId.systemPrefix
 
@@ -46,12 +46,7 @@ import spray.json._
 import org.apache.openwhisk.common.{AkkaLogging, Counter, LoggingMarkers, TransactionId}
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.ack.ActiveAck
-import org.apache.openwhisk.core.connector.{
-  ActivationMessage,
-  CombinedCompletionAndResultMessage,
-  CompletionMessage,
-  ResultMessage
-}
+import org.apache.openwhisk.core.connector.{ActivationMessage, CombinedCompletionAndResultMessage, CompletionMessage, ResultMessage}
 import org.apache.openwhisk.core.containerpool.logging.LogCollectingException
 import org.apache.openwhisk.core.database.UserContext
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
@@ -196,7 +191,7 @@ case class WarmedData(override val container: Container,
 // Events received by the actor
 case class Start(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration] = None)
 case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
-case class BeginFullWarm(action: ExecutableWhiskAction, ttl: Option[FiniteDuration], transid: TransactionId)
+case class BeginFullWarm(action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
 
@@ -253,6 +248,7 @@ class ContainerProxy(factory: (TransactionId,
                                Boolean,
                                ByteSize,
                                Int,
+                               Map[String, Set[String]],
                                Option[ExecutableWhiskAction]) => Future[Container],
                      sendActiveAck: ActiveAck,
                      storeActivation: (TransactionId, WhiskActivation, Boolean, UserContext) => Future[Any],
@@ -275,6 +271,7 @@ class ContainerProxy(factory: (TransactionId,
   var bufferProcessing = false
 
   var isCreatedByRPC = false
+  var rpcCreationStartTime: Instant = null
 
   //keep a separate count to avoid confusion with ContainerState.activeActivationCount that is tracked/modified only in ContainerPool
   var activeCount = 0;
@@ -293,6 +290,7 @@ class ContainerProxy(factory: (TransactionId,
         job.exec.pull,
         job.memoryLimit,
         poolConfig.cpuShare(job.memoryLimit),
+        Map.empty,
         None)
         .map(container =>
           PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, expires = job.ttl.map(_.fromNow))))
@@ -304,6 +302,7 @@ class ContainerProxy(factory: (TransactionId,
       val kind = job.action.exec.kind
       val memory = job.action.limits.memory.megabytes.MB
       logging.info(this, "beginning full warm")
+      rpcCreationStartTime = Instant.now()
       isCreatedByRPC = true
       factory(
         TransactionId.invokerWarmup,
@@ -312,12 +311,15 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.pull,
         memory,
         poolConfig.cpuShare(memory),
+        job.params,
         None)
         .map(container =>
           Warm(container, job.action, job.transid))
         .pipeTo(self)
 
       goto(Starting)
+
+      //TODO add container pinning, functionality for other cmd line args, container deletion
 
     // cold start (no container to reuse or available stem cell container)
     case Event(job: Run, _) =>
@@ -331,6 +333,7 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.pull,
         job.action.limits.memory.megabytes.MB,
         poolConfig.cpuShare(job.action.limits.memory.megabytes.MB),
+        Map.empty,
         Some(job.action))
 
       // container factory will either yield a new container ready to execute the action, or
@@ -381,7 +384,7 @@ class ContainerProxy(factory: (TransactionId,
     // container was successfully obtained
     case Event(completed: PreWarmCompleted, _) =>
       logging.info(this, "sending prewarm completed event")
-      context.parent ! completed
+      context.parent ! NeedWork(completed.data)
       goto(Started) using completed.data
 
     case Event(w: Warm, _) =>
@@ -393,7 +396,7 @@ class ContainerProxy(factory: (TransactionId,
       stay
 
     case Event(w: WarmCompleted, _) =>
-      logging.info(this, "warm completed")
+      logging.info(this, s"warm completed, took ${Duration.between(rpcCreationStartTime, Instant.now()).toMillis}ms")
       val newData = w.data.withoutResumeRun()
       context.parent ! WarmCompleted(newData)
       goto(Running) using newData
@@ -592,7 +595,8 @@ class ContainerProxy(factory: (TransactionId,
       goto(Running) using newData
 
     // container is reclaimed by the pool or it has become too old
-    case Event(StateTimeout | Remove, data: WarmedData) =>
+//    case Event(StateTimeout | Remove, data: WarmedData) =>
+    case Event(Remove, data: WarmedData) =>
       rescheduleJob = true // to suppress sending message to the pool and not double count
       destroyContainer(data, true)
   }
@@ -1051,6 +1055,7 @@ object ContainerProxy {
                       Boolean,
                       ByteSize,
                       Int,
+                      Map[String, Set[String]],
                       Option[ExecutableWhiskAction]) => Future[Container],
             ack: ActiveAck,
             store: (TransactionId, WhiskActivation, Boolean, UserContext) => Future[Any],

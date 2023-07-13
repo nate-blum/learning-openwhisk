@@ -26,15 +26,25 @@ package invoker;
 
 service InvokerService {
   rpc NewPrewarmedContainer (NewPrewarmedContainerRequest) returns (NewPrewarmedContainerResponse) {}
+
+  rpc SetAllowOpenWhiskToFreeMemory (SetAllowOpenWhiskToFreeMemoryRequest) returns (SetAllowOpenWhiskToFreeMemoryResponse) {}
 }
 
+// currently supported params:
+// pin -> number in binary is whether container is pinned to that core, i.e. 4 = 0100 means container is pinned to core 2, 5 = 0101 = pinned to cores 0 & 2
 message NewPrewarmedContainerRequest {
   string actionName = 1;
-  string namespace = 2;
+  map<string, uint64> params = 2;
 }
 
-// The response message
 message NewPrewarmedContainerResponse {
   bool success = 1;
 }
 
+message SetAllowOpenWhiskToFreeMemoryRequest {
+  bool setValue = 1;
+}
+
+message SetAllowOpenWhiskToFreeMemoryResponse {
+  bool success = 1;
+}

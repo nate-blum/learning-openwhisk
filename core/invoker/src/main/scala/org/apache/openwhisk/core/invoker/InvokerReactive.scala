@@ -162,7 +162,7 @@ class InvokerReactive(
 
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
-      case NewPrewarmedContainerEvent(actionName, namespace) =>
+      case NewPrewarmedContainerEvent(actionName, namespace, params) =>
         val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
         implicit val transid: TransactionId = TransactionId.invoker
         WhiskAction
@@ -170,7 +170,22 @@ class InvokerReactive(
           .flatMap(action => {
             action.toExecutableWhiskAction match {
               case Some(executable) =>
-                pool ! BeginFullWarm(executable, null, transid)
+                val args: Map[String, Set[String]] = params.map {
+                  case (k, v: Long) =>
+                    k match {
+                      case "pin" =>
+                        val numCores = Runtime.getRuntime.availableProcessors()
+                        val pin: Seq[Int] = Seq()
+                        for (a <- 0 until numCores)
+                            if ((v >> a) & 1 == 1) pin :+ a
+                        "--cpuset-cpus" -> Set(pin.map(p => p.toString).mkString(","))
+                    }
+                }
+
+                println("cpuset")
+                println(args)
+
+                pool ! BeginFullWarm(executable, args, transid)
                 Future.successful(())
               case None =>
                 logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
