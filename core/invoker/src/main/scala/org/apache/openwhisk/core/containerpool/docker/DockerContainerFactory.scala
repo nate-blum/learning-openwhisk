@@ -67,6 +67,8 @@ class DockerContainerFactory(instance: InvokerInstanceId,
     val registryConfig =
       ContainerFactory.resolveRegistryConfig(userProvidedImage, runtimesRegistryConfig, userImagesRegistryConfig)
     val image = if (userProvidedImage) Left(actionImage) else Right(actionImage)
+    println("docker container factory")
+    println(args)
     DockerContainer.create(
       tid,
       image = image,

@@ -163,6 +163,9 @@ class InvokerReactive(
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
       case NewPrewarmedContainerEvent(actionName, namespace, params) =>
+        print("new prewarmed container event")
+        print(actionName)
+        print(params)
         val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
         implicit val transid: TransactionId = TransactionId.invoker
         WhiskAction
