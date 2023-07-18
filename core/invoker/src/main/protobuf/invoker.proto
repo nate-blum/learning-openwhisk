@@ -25,19 +25,29 @@ option java_outer_classname = "InvokerProto";
 package invoker;
 
 service InvokerService {
-  rpc NewPrewarmedContainer (NewPrewarmedContainerRequest) returns (NewPrewarmedContainerResponse) {}
+  rpc NewWarmedContainer (NewWarmedContainerRequest) returns (NewWarmedContainerResponse) {}
+
+  rpc DeleteContainer (DeleteContainerRequest) returns (DeleteContainerResponse) {}
 
   rpc SetAllowOpenWhiskToFreeMemory (SetAllowOpenWhiskToFreeMemoryRequest) returns (SetAllowOpenWhiskToFreeMemoryResponse) {}
 }
 
 // currently supported params:
-// pin -> number in binary is whether container is pinned to that core, i.e. 4 = 0100 means container is pinned to core 2, 5 = 0101 = pinned to cores 0 & 2
-message NewPrewarmedContainerRequest {
+// pin -> core pin string
+message NewWarmedContainerRequest {
   string actionName = 1;
-  map<string, uint64> params = 2;
+  map<string, string> params = 2;
 }
 
-message NewPrewarmedContainerResponse {
+message NewWarmedContainerResponse {
+  bool success = 1;
+}
+
+message DeleteContainerRequest {
+  string actionName = 1;
+}
+
+message DeleteContainerResponse {
   bool success = 1;
 }
 

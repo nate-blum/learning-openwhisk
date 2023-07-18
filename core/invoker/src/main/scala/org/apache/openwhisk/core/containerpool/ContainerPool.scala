@@ -28,6 +28,7 @@ import org.apache.openwhisk.core.invoker.grpc.SetAllowOpenWhiskToFreeMemoryEvent
 import scala.annotation.tailrec
 import scala.collection.immutable
 import scala.concurrent.duration._
+import scala.util.control.Breaks._
 import scala.util.{Random, Try}
 
 case class ColdStartKey(kind: String, memory: ByteSize)
@@ -35,6 +36,7 @@ case class ColdStartKey(kind: String, memory: ByteSize)
 case object EmitMetrics
 
 case object AdjustPrewarmedContainer
+case class DeleteContainer(action: ExecutableWhiskAction)
 
 /**
  * A pool managing containers to run actions on.
@@ -116,6 +118,23 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       akka.event.Logging.InfoLevel)
   }
 
+  def getContainerForDeletionWithPriority(action: ExecutableWhiskAction, pools: List[Map[ActorRef, ContainerData]]): Option[ActorRef] = {
+    var ret: Option[ActorRef] = None
+
+    breakable {
+      for (p <- pools if p.nonEmpty) {
+        p.filter(_._2.isInstanceOf[WarmedData]).find(_._2.asInstanceOf[WarmedData].action.name == action.name) match {
+          case Some((ref, _)) =>
+            ret = Some(ref)
+            break
+          case _ =>
+        }
+      }
+    }
+
+    ret
+  }
+
   def receive: Receive = {
     case w: BeginFullWarm =>
       val kind = w.action.exec.kind
@@ -129,6 +148,14 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         logging.warn(
           this,
           s"Cannot create prewarm container due to reaching the invoker memory limit: ${poolConfig.userMemory.toMB}")
+      }
+
+    case DeleteContainer(action) =>
+      getContainerForDeletionWithPriority(action, List(freePool, busyPool)) match {
+        case Some(ref) =>
+          ref ! Remove
+        case None =>
+          logging.info(this, s"no warm containers for action ${action.name}, either free or busy, were found on this invoker to be deleted")
       }
 
     case SetAllowOpenWhiskToFreeMemoryEvent(setValue) =>

@@ -32,7 +32,7 @@ import org.apache.openwhisk.core.containerpool.v2.{NotSupportedPoolState, TotalC
 import org.apache.openwhisk.core.database._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.invoker.Invoker.InvokerEnabled
-import org.apache.openwhisk.core.invoker.grpc.{InvokerRPCEvent, NewPrewarmedContainerEvent}
+import org.apache.openwhisk.core.invoker.grpc.{InvokerRPCEvent, NewWarmedContainerEvent, DeleteContainerEvent}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.spi.SpiLoader
@@ -160,36 +160,41 @@ class InvokerReactive(
   private val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
 
+  def getExecutableAction(actionName: String, namespace: String): Future[WhiskAction] = {
+    val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
+    implicit val transid: TransactionId = TransactionId.invoker
+    WhiskAction
+      .get(entityStore, actionid.id, actionid.rev, fromCache = false)
+  }
+
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
-      case NewPrewarmedContainerEvent(actionName, namespace, params) =>
-        println("new prewarmed container event")
-        val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
-        implicit val transid: TransactionId = TransactionId.invoker
-        WhiskAction
-          .get(entityStore, actionid.id, actionid.rev, fromCache = false)
-          .flatMap(action => {
+      case NewWarmedContainerEvent(actionName, namespace, params) =>
+        logging.info(this, "new warmed container event")
+        getExecutableAction(actionName, namespace)
+          .flatMap(action =>
+            action.toExecutableWhiskAction match {
+                case Some(executable) =>
+                  pool ! BeginFullWarm(executable, params, TransactionId.invoker)
+                  Future.successful(())
+                case None =>
+                  logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
+                  Future.failed(new IllegalStateException("non-executable action reached the invoker"))
+              }
+          )
+      case DeleteContainerEvent(actionName, namespace) =>
+        logging.info(this, "delete warmed container event")
+        getExecutableAction(actionName, namespace)
+          .flatMap(action =>
             action.toExecutableWhiskAction match {
               case Some(executable) =>
-                val args: Map[String, Set[String]] = params.map {
-                  case (k, v: Long) =>
-                    k match {
-                      case "pin" =>
-                        val numCores = Runtime.getRuntime.availableProcessors()
-                        var pin: Seq[Int] = Seq()
-                        for (a <- 0 until numCores)
-                            if ((v >> a) % 2 == 1) pin = pin :+ a
-                        "--cpuset-cpus" -> Set(pin.map(p => p.toString).mkString(","))
-                    }
-                }
-
-                pool ! BeginFullWarm(executable, args, transid)
+                pool ! DeleteContainer(executable)
                 Future.successful(())
               case None =>
-                logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
-                Future.failed(new IllegalStateException("non-executable action reached the invoker"))
+                logging.error(this, s"couldn't find the action to delete container for ${action.fullyQualifiedName(false)}")
+                Future.failed(new IllegalStateException("couldn't find the action to delete container for"))
             }
-          })
+          )
       case _ =>
         pool ! event
         Future.successful(())

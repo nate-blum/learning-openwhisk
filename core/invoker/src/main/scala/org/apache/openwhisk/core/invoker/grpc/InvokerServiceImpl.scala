@@ -20,7 +20,7 @@ package org.apache.openwhisk.core.invoker.grpc;
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
-import org.apache.openwhisk.grpc.{InvokerService, NewPrewarmedContainerRequest, NewPrewarmedContainerResponse, SetAllowOpenWhiskToFreeMemoryRequest, SetAllowOpenWhiskToFreeMemoryResponse}
+import org.apache.openwhisk.grpc.{InvokerService, NewWarmedContainerRequest, NewWarmedContainerResponse, DeleteContainerRequest, DeleteContainerResponse, SetAllowOpenWhiskToFreeMemoryRequest, SetAllowOpenWhiskToFreeMemoryResponse}
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
@@ -31,9 +31,14 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
     invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(event)
   }
 
-  override def newPrewarmedContainer(request: NewPrewarmedContainerRequest): Future[NewPrewarmedContainerResponse] = {
-    handleEvent(NewPrewarmedContainerEvent(request.actionName, "guest", request.params))
-    Future.successful(NewPrewarmedContainerResponse(true))
+  override def newWarmedContainer(request: NewWarmedContainerRequest): Future[NewWarmedContainerResponse] = {
+    handleEvent(NewWarmedContainerEvent(request.actionName, "guest", request.params.map { case (k, v) => (k, Set(v))}))
+    Future.successful(NewWarmedContainerResponse(true))
+  }
+
+  override def deleteContainer(request: DeleteContainerRequest): Future[DeleteContainerResponse] = {
+    handleEvent(DeleteContainerEvent(request.actionName, "guest"))
+    Future.successful(DeleteContainerResponse(true))
   }
 
   override def setAllowOpenWhiskToFreeMemory(request: SetAllowOpenWhiskToFreeMemoryRequest): Future[SetAllowOpenWhiskToFreeMemoryResponse] = {
@@ -47,7 +52,8 @@ object InvokerServiceImpl {
     new InvokerServiceImpl(invokerRef)
 }
 
-// new prewarmed container event - received by ContainerPool
+// new warmed container event - received by ContainerPool
 trait InvokerRPCEvent
-case class NewPrewarmedContainerEvent(actionName: String, namespace: String, params: Map[String, Long]) extends InvokerRPCEvent
+case class NewWarmedContainerEvent(actionName: String, namespace: String, params: Map[String, Set[String]]) extends InvokerRPCEvent
+case class DeleteContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
 case class SetAllowOpenWhiskToFreeMemoryEvent(setValue: Boolean) extends InvokerRPCEvent
