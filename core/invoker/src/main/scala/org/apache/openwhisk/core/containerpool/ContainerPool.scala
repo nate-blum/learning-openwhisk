@@ -123,9 +123,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     breakable {
       for (p <- pools if p.nonEmpty) {
+        logging.info(this, "checking pool")
         p.filter(_._2.isInstanceOf[WarmedData]).find(_._2.asInstanceOf[WarmedData].action.name == action.name) match {
-          case Some((ref, _)) =>
+          case Some((ref, d: WarmedData)) =>
             ret = Some(ref)
+            logging.info(this, s"found container ${d.container.containerId}")
             break
           case _ =>
         }
@@ -151,8 +153,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case DeleteContainer(action) =>
+
       getContainerForDeletionWithPriority(action, List(freePool, busyPool)) match {
         case Some(ref) =>
+          logging.info(this, "found container to delete")
           ref ! Remove
         case None =>
           logging.info(this, s"no warm containers for action ${action.name}, either free or busy, were found on this invoker to be deleted")
