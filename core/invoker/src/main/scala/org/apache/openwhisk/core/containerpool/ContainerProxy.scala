@@ -306,7 +306,8 @@ class ContainerProxy(factory: (TransactionId,
       isCreatedByRPC = true
       factory(
         TransactionId.invokerWarmup,
-        ContainerProxy.containerName(instance, "warm", s"${kind}_${job.action.name.name}"),
+        ContainerProxy.containerName(instance, "warm",
+          s"${kind}_${job.action.name.name}${if (job.params.contains("pin")) s"_pin_${job.params.get("pin")}" else ""}"),
         job.action.exec.image,
         job.action.exec.pull,
         memory,
