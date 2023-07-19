@@ -307,7 +307,7 @@ class ContainerProxy(factory: (TransactionId,
       factory(
         TransactionId.invokerWarmup,
         ContainerProxy.containerName(instance, "warm",
-          s"${kind}_${job.action.name.name}${if (job.params.contains("--cpuset-cpus")) s"_pin_${job.params.get("--cpuset-cpus").head}" else ""}"),
+          s"${kind}_${job.action.name.name}${if (job.params.contains("--cpuset-cpus")) s"_pin_${job.params.get("--cpuset-cpus").get.head}" else ""}"),
         job.action.exec.image,
         job.action.exec.pull,
         memory,
