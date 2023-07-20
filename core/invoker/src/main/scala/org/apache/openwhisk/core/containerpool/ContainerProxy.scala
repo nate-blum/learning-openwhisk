@@ -566,7 +566,9 @@ class ContainerProxy(factory: (TransactionId,
       goto(Pausing)
 
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
-    case Event(Remove, data: WarmedData) => destroyContainer(data, false)
+    case Event(Remove, data: WarmedData) =>
+      logging.info(this, "destroy container running")
+      destroyContainer(data, false)
 
     // warm container failed
     case Event(_: FailureMessage, data: WarmedData) =>

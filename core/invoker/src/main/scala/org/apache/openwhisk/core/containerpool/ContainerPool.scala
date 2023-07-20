@@ -152,9 +152,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case DeleteContainer(action) =>
-
       getContainerForDeletionWithPriority(action, List(freePool, busyPool)) match {
         case Some(ref) =>
+          logging.info(this, "what on earth is going wrong here")
           removeContainer(ref)
         case None =>
           logging.info(this, s"no warm containers for action ${action.name}, either free or busy, were found on this invoker to be deleted")
@@ -496,6 +496,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Removes a container and updates state accordingly. */
   def removeContainer(toDelete: ActorRef) = {
+    logging.info(this, "remove container")
     toDelete ! Remove
     freePool = freePool - toDelete
     busyPool = busyPool - toDelete
