@@ -399,7 +399,7 @@ class ContainerProxy(factory: (TransactionId,
       logging.info(this, s"warm completed, took ${Duration.between(rpcCreationStartTime, Instant.now()).toMillis}ms")
       val newData = w.data.withoutResumeRun()
       context.parent ! WarmCompleted(newData)
-      goto(Running) using newData
+      goto(Ready) using newData
 
     // container creation failed
     case Event(_: FailureMessage, _) =>
