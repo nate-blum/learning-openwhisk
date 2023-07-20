@@ -20,15 +20,15 @@ def main():
         stub.NewWarmedContainer(
             invoker_types.NewWarmedContainerRequest(
                 actionName="helloPy", params={
-                "--cpuset-cpus": ",".join([str(x) for x in [i, i + 8]])
+                "--cpuset-cpus": "_".join([str(x) for x in [i, i + 8]])
             }))
-    stub.SetAllowOpenWhiskToFreeMemory(setValue=False)
-    stub.DeleteContainer(actionName="helloPy")
+    stub.SetAllowOpenWhiskToFreeMemory(invoker_types.SetAllowOpenWhiskToFreeMemoryRequest(setValue=False))
+    stub.DeleteContainer(invoker_types.DeleteContainerRequest(actionName="helloPy"))
 
     # asynchronous call
-    future = stub.SetAllowOpenWhiskToFreeMemory.future(setValue=False)
+    future = stub.SetAllowOpenWhiskToFreeMemory.future(invoker_types.SetAllowOpenWhiskToFreeMemoryRequest(setValue=False))
     result = future.result()
-    print("result = " + result)
+    print("result =", result)
 
 if __name__ == "__main__":
     main()

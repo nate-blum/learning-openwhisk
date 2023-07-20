@@ -191,6 +191,7 @@ class DockerContainer(protected val id: ContainerId,
   }
   override def destroy()(implicit transid: TransactionId): Future[Unit] = {
     super.destroy()
+    logging.info(this, s"destroying docker container $id supposed to be docker rming")
     docker.rm(id)
   }
 
