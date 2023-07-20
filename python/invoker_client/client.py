@@ -1,7 +1,8 @@
 import getopt
 import sys
 import grpc
-import invoker_pb2_grpc
+import invoker_pb2 as invoker_types
+import invoker_pb2_grpc as invoker_service
 
 state = {}
 
@@ -12,13 +13,15 @@ def main():
             state['host'] = arg
 
     channel = grpc.insecure_channel(state['host'])
-    stub = invoker_pb2_grpc.InvokerServiceStub(channel)
+    stub = invoker_service.InvokerServiceStub(channel)
 
     # synchronous calls
     for i in range(1):
-        stub.NewWarmedContainer(actionName="helloPy", params={
-            "--cpuset-cpus": ",".join([str(x) for x in [i, i + 8]])
-        })
+        stub.NewWarmedContainer(
+            invoker_types.NewWarmedContainerRequest(
+                actionName="helloPy", params={
+                "--cpuset-cpus": ",".join([str(x) for x in [i, i + 8]])
+            }))
     stub.SetAllowOpenWhiskToFreeMemory(setValue=False)
     stub.DeleteContainer(actionName="helloPy")
 
