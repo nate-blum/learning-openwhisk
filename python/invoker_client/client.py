@@ -26,7 +26,7 @@ def main():
     stub.DeleteContainer(actionName="helloPy")
 
     # asynchronous call
-    future = stub.SetAllowOpenWhiskToFreeMemory.future(actionName="helloPy")
+    future = stub.SetAllowOpenWhiskToFreeMemory.future(setValue=False)
     result = future.result()
     print("result = " + result)
 
