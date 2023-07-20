@@ -106,6 +106,7 @@ trait Container {
 
   /** Completely destroys this instance of the container. */
   def destroy()(implicit transid: TransactionId): Future[Unit] = {
+    logging.info(this, "destroying container")
     closeConnections(httpConnection)
   }
 
