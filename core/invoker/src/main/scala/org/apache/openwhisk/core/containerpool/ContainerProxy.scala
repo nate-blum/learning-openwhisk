@@ -47,6 +47,7 @@ import org.apache.openwhisk.common.{AkkaLogging, Counter, LoggingMarkers, Transa
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.ack.ActiveAck
 import org.apache.openwhisk.core.connector.{ActivationMessage, CombinedCompletionAndResultMessage, CompletionMessage, ResultMessage}
+import org.apache.openwhisk.core.containerpool.docker.DockerContainer
 import org.apache.openwhisk.core.containerpool.logging.LogCollectingException
 import org.apache.openwhisk.core.database.UserContext
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
@@ -737,7 +738,7 @@ class ContainerProxy(factory: (TransactionId,
     }
 
     unpause
-      .flatMap(_ => container.destroy()(TransactionId.invokerNanny))
+      .flatMap(_ => container.asInstanceOf[DockerContainer].destroy()(TransactionId.invokerNanny))
       .flatMap(_ => abortProcess)
       .map(_ => ContainerRemoved(replacePrewarm))
       .pipeTo(self)
