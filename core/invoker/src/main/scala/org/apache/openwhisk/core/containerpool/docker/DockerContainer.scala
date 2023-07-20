@@ -190,9 +190,8 @@ class DockerContainer(protected val id: ContainerId,
     (if (useRunc) { runc.resume(id) } else { docker.unpause(id) }).flatMap(_ => super.resume())
   }
   override def destroy()(implicit transid: TransactionId): Future[Unit] = {
-    logging.info(this, s"destroying docker container $id supposed to be docker rming")
-    docker.rm(id)
     super.destroy()
+    docker.rm(id)
   }
 
   /**

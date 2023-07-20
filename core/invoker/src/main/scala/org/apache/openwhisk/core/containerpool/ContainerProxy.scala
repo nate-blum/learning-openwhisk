@@ -721,7 +721,6 @@ class ContainerProxy(factory: (TransactionId,
                        replacePrewarm: Boolean,
                        abort: Boolean = false,
                        abortResponse: Option[ActivationResponse] = None) = {
-    logging.info(this, "destroying container from containerproxy")
     val container = newData.container
     if (!rescheduleJob) {
       context.parent ! ContainerRemoved(replacePrewarm)
@@ -735,18 +734,13 @@ class ContainerProxy(factory: (TransactionId,
       Future.successful(())
     }
 
-    logging.info(this, "unpause section")
-
     val unpause = stateName match {
       case Paused => container.resume()(TransactionId.invokerNanny)
       case _      => Future.successful(())
     }
 
     unpause
-      .flatMap(_ => {
-        logging.info(this, "calling .destroy")
-        container.asInstanceOf[DockerContainer].destroy()(TransactionId.invokerNanny)
-      })
+      .flatMap(_ => container.asInstanceOf[DockerContainer].destroy()(TransactionId.invokerNanny))
       .flatMap(_ => abortProcess)
       .map(_ => ContainerRemoved(replacePrewarm))
       .pipeTo(self)

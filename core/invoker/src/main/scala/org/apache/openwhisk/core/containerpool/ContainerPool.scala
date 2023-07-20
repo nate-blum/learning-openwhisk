@@ -495,7 +495,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Removes a container and updates state accordingly. */
   def removeContainer(toDelete: ActorRef) = {
-    logging.info(this, "remove container")
     toDelete ! Remove
     freePool = freePool - toDelete
     busyPool = busyPool - toDelete
