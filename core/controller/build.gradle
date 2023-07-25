@@ -22,6 +22,7 @@ plugins {
     id 'org.scoverage'
     id 'scala'
 }
+apply plugin: 'com.lightbend.akka.grpc.gradle'
 
 ext.dockerImageName = 'controller'
 apply from: '../../gradle/docker.gradle'
@@ -39,6 +40,20 @@ ext.coverageDirs = [
     "${project(':common:scala').buildDir.absolutePath}/classes/scala/scoverage"
 ]
 distDockerCoverage.dependsOn ':common:scala:scoverageClasses', 'scoverageClasses'
+
+buildscript {
+    repositories {
+        mavenLocal()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        // see https://plugins.gradle.org/plugin/com.lightbend.akka.grpc.gradle
+        // for the currently latest version.
+        classpath 'com.lightbend.akka.grpc:akka-grpc-gradle-plugin:2.0.0'
+    }
+}
 
 dependencies {
     implementation "org.scala-lang:scala-library:${gradle.scala.version}"

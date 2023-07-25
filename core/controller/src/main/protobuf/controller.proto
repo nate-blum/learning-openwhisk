@@ -1,0 +1,69 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+import "google/protobuf/wrappers.proto";
+
+option java_multiple_files = true;
+option java_package = "org.apache.openwhisk.grpc";
+option java_outer_classname = "ControllerProto";
+
+package controller;
+
+service ControllerService {
+  rpc GetInvocationRoute (GetInvocationRouteRequest) returns (GetInvocationRouteResponse) {}
+
+  rpc UpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
+}
+
+message GetInvocationRouteRequest {
+  string actionName = 1;
+}
+
+message GetInvocationRouteResponse {
+  string invokerHost = 1;
+}
+
+// map of action to its invoker states by the name of the action
+// for instance, hello1 -> (ContainerStatesByInvoker object), hello2 -> (ContainerStatesByInvoker object)
+message InvokerStateByAction {
+  map<string, ContainerStatesByInvoker> invokerStateByAction = 1;
+}
+
+// map of invoker to its container states by the name of the invoker
+// for instance, panic-cloud-xs-01 -> (ContainerStateCounts object), panic-cloud-xs-02 -> (ContainerStateCounts object)
+message ContainerStatesByInvoker {
+  map<string, ContainerStateCounts> containerStatesByInvoker = 1;
+}
+
+// map of container states to their counts
+// for instance, free -> 10, busy -> 5, warming -> 2
+// these are per invoker and action
+message ContainerStateCounts {
+  map<string, uint32> stateCounts = 1;
+}
+
+message ClusterState {
+  uint32 healthyInvokerCount = 1;
+  InvokerStateByAction states = 2;
+}
+
+message UpdateClusterStateRequest {
+  ClusterState clusterState = 1;
+}
+
+message UpdateClusterStateResponse {}
