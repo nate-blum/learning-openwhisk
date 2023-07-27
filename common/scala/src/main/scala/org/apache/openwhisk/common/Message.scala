@@ -19,10 +19,6 @@ package org.apache.openwhisk.common
 
 import org.apache.openwhisk.core.entity.InvokerInstanceId
 import spray.json._
-import spray.json.DefaultJsonProtocol._
-
-import java.time.Instant
-import scala.util.Try
 
 case object GracefulShutdown
 case object Enable
