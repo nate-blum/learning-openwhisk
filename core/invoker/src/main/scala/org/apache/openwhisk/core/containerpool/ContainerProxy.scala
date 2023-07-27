@@ -72,6 +72,8 @@ case object Paused extends ContainerState
 case object Removing extends ContainerState
 
 // Data
+type ContainerParams = Map[String, Set[String]]
+
 /** Base data type */
 sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: ByteSize, val activeActivationCount: Int) {
 
@@ -180,7 +182,7 @@ case class WarmedData(override val container: Container,
                       override val lastUsed: Instant,
                       override val activeActivationCount: Int = 0,
                       resumeRun: Option[Run] = None,
-                      params: Option[Map[String, Set[String]]] = None)
+                      params: Option[ContainerParams] = None)
     extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmed"
@@ -193,7 +195,7 @@ case class WarmedData(override val container: Container,
 // Events received by the actor
 case class Start(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration] = None)
 case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
-case class BeginFullWarm(action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
+case class BeginFullWarm(action: ExecutableWhiskAction, params: ContainerParams, transid: TransactionId)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
 
@@ -203,7 +205,7 @@ case object ContainerPaused
 case class ContainerRemoved(replacePrewarm: Boolean) // when container is destroyed
 case object RescheduleJob // job is sent back to parent and could not be processed because container is being destroyed
 case class PreWarmCompleted(data: PreWarmedData)
-case class Warm(container: Container, action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
+case class Warm(container: Container, action: ExecutableWhiskAction, params: ContainerParams, transid: TransactionId)
 case class WarmCompleted()
 case class InitCompleted(data: WarmedData)
 case object RunCompleted
@@ -250,7 +252,7 @@ class ContainerProxy(factory: (TransactionId,
                                Boolean,
                                ByteSize,
                                Int,
-                               Map[String, Set[String]],
+                               ContainerParams,
                                Option[ExecutableWhiskAction]) => Future[Container],
                      sendActiveAck: ActiveAck,
                      storeActivation: (TransactionId, WhiskActivation, Boolean, UserContext) => Future[Any],
@@ -1067,7 +1069,7 @@ object ContainerProxy {
                       Boolean,
                       ByteSize,
                       Int,
-                      Map[String, Set[String]],
+                      ContainerParams,
                       Option[ExecutableWhiskAction]) => Future[Container],
             ack: ActiveAck,
             store: (TransactionId, WhiskActivation, Boolean, UserContext) => Future[Any],
