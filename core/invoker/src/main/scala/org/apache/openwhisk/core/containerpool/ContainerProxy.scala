@@ -179,7 +179,8 @@ case class WarmedData(override val container: Container,
                       action: ExecutableWhiskAction,
                       override val lastUsed: Instant,
                       override val activeActivationCount: Int = 0,
-                      resumeRun: Option[Run] = None)
+                      resumeRun: Option[Run] = None,
+                      params: Option[Map[String, Set[String]]] = None)
     extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
     with ContainerInUse {
   override val initingState = "warmed"
@@ -202,8 +203,8 @@ case object ContainerPaused
 case class ContainerRemoved(replacePrewarm: Boolean) // when container is destroyed
 case object RescheduleJob // job is sent back to parent and could not be processed because container is being destroyed
 case class PreWarmCompleted(data: PreWarmedData)
-case class Warm(container: Container, action: ExecutableWhiskAction, transid: TransactionId)
-case class WarmCompleted(data: WarmedData)
+case class Warm(container: Container, action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
+case class WarmCompleted()
 case class InitCompleted(data: WarmedData)
 case object RunCompleted
 
@@ -316,7 +317,7 @@ class ContainerProxy(factory: (TransactionId,
         job.params,
         None)
         .map(container =>
-          Warm(container, job.action, job.transid))
+          Warm(container, job.action, job.params, job.transid))
         .pipeTo(self)
 
       goto(Starting)
@@ -391,15 +392,14 @@ class ContainerProxy(factory: (TransactionId,
       logging.info(this, "prewarm completed, warming")
       implicit val transid = w.transid
       initialize(w.container, w.action)
-        .map(data => WarmCompleted(data))
+        .map(_ => WarmCompleted())
         .pipeTo(self)
-      stay
+      stay using WarmedData(w.container, EntityName(w.action.namespace.namespace), w.action, null, params = Some(w.params))
 
-    case Event(w: WarmCompleted, _) =>
+    case Event(WarmCompleted, data: WarmedData) =>
       logging.info(this, s"warm completed, took ${Duration.between(rpcCreationStartTime, Instant.now()).toMillis}ms")
-      val newData = w.data.withoutResumeRun()
-      context.parent ! WarmCompleted(newData)
-      goto(Ready) using newData
+      context.parent ! NeedWork(data)
+      goto(Ready) using data
 
     // container creation failed
     case Event(_: FailureMessage, _) =>
@@ -819,7 +819,7 @@ class ContainerProxy(factory: (TransactionId,
    * @param container the container to initialize
    * @param action    the action to initialize it to
    */
-  def initialize(container: Container, action: ExecutableWhiskAction)(implicit transid: TransactionId): Future[WarmedData] = {
+  def initialize(container: Container, action: ExecutableWhiskAction)(implicit transid: TransactionId): Future[Any] = {
     val actionTimeout = action.limits.timeout.duration
 
     val environment = Map(
@@ -837,7 +837,7 @@ class ContainerProxy(factory: (TransactionId,
         Some(action.toWhiskAction))
       .flatMap { _ =>
         logging.info(this, "successfully initialized container")
-        Future.successful(WarmedData(container, EntityName(action.namespace.namespace), action, null))
+        Future.successful()
       }
   }
 

@@ -19,14 +19,14 @@ package org.apache.openwhisk.core.connector
 
 import scala.util.Try
 import spray.json._
-import org.apache.openwhisk.common.TransactionId
+import org.apache.openwhisk.common.{ActionStatePerInvoker, TransactionId}
 import org.apache.openwhisk.core.entity._
 
 import scala.concurrent.duration._
 import akka.http.scaladsl.model.StatusCodes._
-import java.util.concurrent.TimeUnit
 
-import org.apache.openwhisk.core.entity.ActivationResponse.{statusForCode, ERROR_FIELD}
+import java.util.concurrent.TimeUnit
+import org.apache.openwhisk.core.entity.ActivationResponse.{ERROR_FIELD, statusForCode}
 import org.apache.openwhisk.utils.JsHelpers
 
 /** Basic trait for messages that are sent on a message bus connector. */
@@ -280,16 +280,18 @@ object AcknowledegmentMessage extends DefaultJsonProtocol {
   }
 }
 
-case class PingMessage(instance: InvokerInstanceId, message: String, isEnabled: Option[Boolean] = None) extends Message {
+case class PingMessage(instance: InvokerInstanceId, actionStates: ActionStatePerInvoker, isEnabled: Option[Boolean] = None) extends Message {
   override def serialize = PingMessage.serdes.write(this).compactPrint
 
   def invokerEnabled: Boolean = isEnabled.getOrElse(true)
 }
 
 object PingMessage extends DefaultJsonProtocol {
+  import org.apache.openwhisk.common.ActionStatePerInvokerJsonProtocol._
+
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 
-  implicit val serdes = jsonFormat(PingMessage.apply, "name", "message", "isEnabled")
+  implicit val serdes = jsonFormat(PingMessage.apply, "name", "actionStates", "isEnabled")
 }
 
 trait EventMessageBody extends Message {

@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.containerpool
 
 import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
-import org.apache.openwhisk.common.{Logging, LoggingMarkers, MetricEmitter, TransactionId}
+import org.apache.openwhisk.common.{ActionState, ActionStatePerInvoker, ContainerList, Logging, LoggingMarkers, MetricEmitter, RPCContainer, TransactionId}
 import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
@@ -73,6 +73,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   var busyPool = immutable.Map.empty[ActorRef, ContainerData]
   var prewarmedPool = immutable.Map.empty[ActorRef, PreWarmedData]
   var prewarmStartingPool = immutable.Map.empty[ActorRef, (String, ByteSize)]
+  var warmingPool = immutable.Map.empty[ActorRef, (ExecutableWhiskAction, Map[String, Set[String]])]
   // If all memory slots are occupied and if there is currently no container to be removed, than the actions will be
   // buffered here to keep order of computation.
   // Otherwise actions with small memory-limits could block actions with large memory limits.
@@ -138,11 +139,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   def receive: Receive = {
     case w: BeginFullWarm =>
-      val kind = w.action.exec.kind
-      val memory = w.action.limits.memory.megabytes.MB
-      if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, memory)) {
+      if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, w.action.limits.memory.megabytes.MB)) {
         val newContainer = childFactory(context)
-        prewarmStartingPool = prewarmStartingPool + (newContainer -> (kind, memory))
+        warmingPool = warmingPool + (newContainer -> w.action)
 
         newContainer ! w
       } else {
@@ -195,7 +194,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 .map(container => (container, "prewarmed"))
                 .orElse {
                   // Is there enough space to create a new container or do other containers have to be removed?
-                  if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, memory)) {
+                  if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory)) {
                     val container = Some(createContainer(memory), "cold")
                     incrementColdStartCount(kind, memory)
                     container
@@ -321,8 +320,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       prewarmStartingPool = prewarmStartingPool - sender()
       prewarmedPool = prewarmedPool + (sender() -> data)
 
-    case WarmCompleted(data: WarmedData) =>
-      prewarmStartingPool = prewarmStartingPool - sender()
+    case NeedWork(data: WarmedData) =>
+      warmingPool = warmingPool - sender()
       freePool = freePool + (sender() -> data)
 
     // Container got removed
@@ -348,6 +347,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       prewarmStartingPool.get(sender()).foreach { _ =>
         logging.info(this, "failed starting prewarm, removed")
         prewarmStartingPool = prewarmStartingPool - sender()
+      }
+
+      warmingPool.get(sender()).foreach { _ =>
+        logging.info(this, "failed to warm, removed")
+        warmingPool = warmingPool - sender()
       }
 
       //backfill prewarms on every ContainerRemoved(replacePrewarm = true), just in case
@@ -509,8 +513,36 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    */
   def hasPoolSpaceFor[A](pool: Map[A, ContainerData],
                          prewarmStartingPool: Map[A, (String, ByteSize)],
+                         warmingPool: Map[A, (ExecutableWhiskAction, Map[String, Set[String]])],
                          memory: ByteSize): Boolean = {
-    memoryConsumptionOf(pool) + prewarmStartingPool.map(_._2._2.toMB).sum + memory.toMB <= poolConfig.userMemory.toMB
+    memoryConsumptionOf(pool) + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB).sum + memory.toMB <= poolConfig.userMemory.toMB
+  }
+
+  def containerList(pool: Map[ActorRef, Any]): ContainerList = {
+    ContainerList(pool map {
+      case (_, d: WarmedData) =>
+        RPCContainer(d.container.containerId.asString, d.params.get.get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
+      case (_, (_, p: Map[String, Set[String]])) =>
+        RPCContainer("", p.get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
+    })
+  }
+
+  private def actionState(actionName: String): ActionState = {
+    ActionState(Map(
+      "free" -> containerList(freePool.filter(_._2.asInstanceOf[WarmedData].action.name.name == actionName)),
+      "busy" -> containerList(busyPool.filter(_._2.asInstanceOf[WarmedData].action.name.name == actionName)),
+      "warming" -> containerList(warmingPool.filter(_._2._1.name.name == actionName))
+    ))
+  }
+
+  def actionStates(): ActionStatePerInvoker = {
+    val actions: Set[String] = (Set(freePool, busyPool) flatMap { pool => pool.map(_._2.asInstanceOf[WarmedData].action.name.name) }) ++ warmingPool.map(_._2._1.name.name)
+    ActionStatePerInvoker(actions.map(action => action -> actionState(action)).toMap, freeMemoryMB())
+  }
+
+  private def freeMemoryMB(): Long = {
+    val memoryUsed = List(freePool, busyPool, prewarmedPool).map(memoryConsumptionOf).sum + prewarmStartingPool.map(_._2._2.toMB).sum
+    poolConfig.userMemory.toMB - memoryUsed
   }
 
   /**

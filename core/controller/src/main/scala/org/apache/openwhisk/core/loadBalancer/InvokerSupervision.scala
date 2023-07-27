@@ -92,10 +92,11 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
   var instanceToRef = immutable.Map.empty[Int, ActorRef]
   var refToInstance = immutable.Map.empty[ActorRef, InvokerInstanceId]
   var status = IndexedSeq[InvokerHealth]()
+  var invokerClusterState: InvokerClusterState = InvokerClusterState(Map.empty)
 
   def receive: Receive = {
     case p: PingMessage =>
-      logging.info(this, s"received ping, ${p.message}")
+      logging.info(this, s"received ping, ${p.actionStates.toString}")
       val invoker = instanceToRef.getOrElse(p.instance.toInt, registerInvoker(p.instance))
       instanceToRef = instanceToRef.updated(p.instance.toInt, invoker)
 
@@ -122,6 +123,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
       logStatus()
 
     case Transition(invoker, oldState: InvokerState, newState: InvokerState) =>
+      logging.info(this, "transition event")
       refToInstance.get(invoker).foreach { instance =>
         status = status.updated(instance.toInt, new InvokerHealth(instance, newState))
       }

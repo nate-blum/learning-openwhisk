@@ -38,24 +38,18 @@ message GetInvocationRouteResponse {
   string invokerHost = 1;
 }
 
-// map of action to its invoker states by the name of the action
-// for instance, hello1 -> (ContainerStatesByInvoker object), hello2 -> (ContainerStatesByInvoker object)
-message InvokerStateByAction {
-  map<string, InvokerStateByInvoker> invokerStateByAction = 1;
-}
-
 // map of invoker to its container states by the name of the invoker
-// for instance, 1 -> (ContainerStateLists object), 2 -> (ContainerStateLists object)
-message InvokerStateByInvoker {
-  map<uint64, InvokerState> invokerStateByInvoker = 1;
+// for instance, hello1 -> (ContainerStateLists object), hello2 -> (ContainerStateLists object)
+message ActionStatePerInvoker {
+  map<string, ActionState> actionStates = 1;
+  uint64 freeMemoryMB = 2;
 }
 
 // map of container states to their counts
 // for instance, free -> [{ "1bh123", "0,8" }, { "1243145", "1,9" }], busy -> [{ "df356", "2,10" }, { "j5yc", "3,11" }]
 // these are per invoker and action
-message InvokerState {
+message ActionState {
   map<string, ContainerList> stateLists = 1;
-  uint64 freeMemoryBytes = 2;
 }
 
 message ContainerList {
@@ -68,8 +62,9 @@ message Container {
 }
 
 message ClusterState {
-  uint32 healthyInvokerCount = 1;
-  InvokerStateByAction states = 2;
+  // map of action to its invoker states by the name of the action
+  // for instance, 1 -> (ActionStatePerInvoker object), 2 -> (ActionStatePerInvoker object)
+  map<uint64, ActionStatePerInvoker> actionStatePerInvoker = 2;
 }
 
 message UpdateClusterStateRequest {
