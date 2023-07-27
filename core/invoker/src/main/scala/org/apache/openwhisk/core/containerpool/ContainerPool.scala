@@ -20,6 +20,7 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
 import org.apache.openwhisk.common.{ActionState, ActionStatePerInvoker, ContainerList, Logging, LoggingMarkers, MetricEmitter, RPCContainer, TransactionId}
 import org.apache.openwhisk.core.connector.MessageFeed
+import org.apache.openwhisk.core.containerpool.containerpool.ContainerParams
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._

@@ -47,6 +47,7 @@ import org.apache.openwhisk.common.{AkkaLogging, Counter, LoggingMarkers, Transa
 import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.ack.ActiveAck
 import org.apache.openwhisk.core.connector.{ActivationMessage, CombinedCompletionAndResultMessage, CompletionMessage, ResultMessage}
+import org.apache.openwhisk.core.containerpool.containerpool.ContainerParams
 import org.apache.openwhisk.core.containerpool.docker.DockerContainer
 import org.apache.openwhisk.core.containerpool.logging.LogCollectingException
 import org.apache.openwhisk.core.database.UserContext
@@ -72,7 +73,9 @@ case object Paused extends ContainerState
 case object Removing extends ContainerState
 
 // Data
-type ContainerParams = Map[String, Set[String]]
+package object containerpool {
+  type ContainerParams = Map[String, Set[String]]
+}
 
 /** Base data type */
 sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: ByteSize, val activeActivationCount: Int) {
