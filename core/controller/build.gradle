@@ -15,13 +15,11 @@
  * limitations under the License.
  */
 
-plugins {
-    id 'application'
-    id 'eclipse'
-    id 'maven'
-    id 'org.scoverage'
-    id 'scala'
-}
+apply plugin: 'scala'
+apply plugin: 'application'
+apply plugin: 'eclipse'
+apply plugin: 'maven'
+apply plugin: 'org.scoverage'
 apply plugin: 'com.lightbend.akka.grpc.gradle'
 
 ext.dockerImageName = 'controller'
