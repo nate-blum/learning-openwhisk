@@ -1,7 +1,10 @@
-from typing import Dict
+from typing import Dict,List,Deque,NamedTuple,Union,Optional
+from operator import itemgetter
 import grpc
 from invoker_client import invoker_pb2 as invoker_types
 from invoker_client import invoker_pb2_grpc as invoker_service
+
+from data_structure import LatencyInfo, RoutingResult
 
 
 class Invoker:
@@ -28,6 +31,14 @@ class Func:
         self.invoker_2_referenceExecTime = invoker_2_referenceExecTime
 
 
+# Monitor collects all the necessary info for agent to make decsion
+class Monitor:
+    def __init__(self):
+        self.func_2_arrival_queue:Dict[int, Deque] = {}
+        self.func_2_slaLaency_for_reward: Dict[int,LatencyInfo] = {}
+        self.func_2_nColdStart = {}
+
+
 class Loadbalancer:
     def __init__(self) -> None:
         pass
@@ -45,6 +56,10 @@ class Cluster:
         self.func_2_busyinfo = {}
         self.func_2_warminginfo = {}
 
+        self.func_2_warminfoSorted = {} # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
+        self.func_2_busyinfoSorted = {}
+        self.func_2_warminginfoSorted = {}
+
         self.cluster_spec_dict = cluster_spec_dict
         self.server_type_lst = list(cluster_spec_dict.keys())
         self.func_spec_dict = func_spec_dict
@@ -58,8 +73,25 @@ class Cluster:
             self.funcname_2_id[name] = func_id
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
 
+    # find a proper invoker and try to trigger a cold start
+    def _find_proper_invoker_cold_start(self, func_id)->Optional[int]:
+        pass
 
-
+    # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
+    def route_invocation(self, func_id)->Union[int,RoutingResult]:
+        warminfo_sorted = self.func_2_warminfoSorted[func_id]
+        if warminfo_sorted:
+            return warminfo_sorted[0] # invoker with the maximum of number of warm container for the function
+        busyinfo_sorted = self.func_2_busyinfoSorted[func_id]
+        if busyinfo_sorted:
+            return busyinfo_sorted[0]
+        warminginfo_sorted = self.func_2_warminginfoSorted[func_id]
+        if warminginfo_sorted:
+            return warminginfo_sorted[0]
+        # no warm, busy, warming, just create one (cold start)
+        find_res = self._find_proper_invoker_cold_start(func_id)
+        if find_res is None:
+            return RoutingResult.DISCARD
 
     def _reset_openwhisk_cluster(self):
         # @TODO
@@ -91,3 +123,8 @@ class Cluster:
 
     def delete_container(self, func_id):
         pass
+    # ----------for collecting runtime info---------
+    def get_avg_busy_container_utilization_per_type(self, func_ids: List):
+       # get avg container utilization per type for each function
+       pass
+
