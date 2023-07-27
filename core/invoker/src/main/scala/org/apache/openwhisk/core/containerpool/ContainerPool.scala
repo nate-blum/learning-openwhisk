@@ -20,7 +20,6 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
 import org.apache.openwhisk.common.{ActionState, ActionStatePerInvoker, ContainerList, Logging, LoggingMarkers, MetricEmitter, RPCContainer, TransactionId}
 import org.apache.openwhisk.core.connector.MessageFeed
-import org.apache.openwhisk.core.containerpool.containerpool.ContainerParams
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
@@ -74,7 +73,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   var busyPool = immutable.Map.empty[ActorRef, ContainerData]
   var prewarmedPool = immutable.Map.empty[ActorRef, PreWarmedData]
   var prewarmStartingPool = immutable.Map.empty[ActorRef, (String, ByteSize)]
-  var warmingPool = immutable.Map.empty[ActorRef, (ExecutableWhiskAction, ContainerParams)]
+  var warmingPool = immutable.Map.empty[ActorRef, (ExecutableWhiskAction, Map[String, Set[String]])]
   // If all memory slots are occupied and if there is currently no container to be removed, than the actions will be
   // buffered here to keep order of computation.
   // Otherwise actions with small memory-limits could block actions with large memory limits.
@@ -514,7 +513,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
    */
   def hasPoolSpaceFor[A](pool: Map[A, ContainerData],
                          prewarmStartingPool: Map[A, (String, ByteSize)],
-                         warmingPool: Map[A, (ExecutableWhiskAction, ContainerParams)],
+                         warmingPool: Map[A, (ExecutableWhiskAction, Map[String, Set[String]])],
                          memory: ByteSize): Boolean = {
     memoryConsumptionOf(pool) + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB).sum + memory.toMB <= poolConfig.userMemory.toMB
   }
@@ -523,8 +522,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     ContainerList(pool map {
       case (_, d: WarmedData) =>
         RPCContainer(d.container.containerId.asString, d.params.get.get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
-      case (_, (_, p: ContainerParams)) =>
-        RPCContainer("", p.get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
+      case (_, (_, p: Map[_, _])) =>
+        RPCContainer("", p.asInstanceOf[Map[String, Set[String]]].get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
     })
   }
 
