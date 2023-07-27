@@ -339,7 +339,7 @@ class InvokerReactive(
     Scheduler.scheduleWaitAtMost(1.seconds)(() => pingController(isEnabled = true))
 
   private def pingController(isEnabled: Boolean) = {
-    healthProducer.send(s"${Invoker.topicPrefix}health", PingMessage(instance, isEnabled = Some(isEnabled))).andThen {
+    healthProducer.send(s"${Invoker.topicPrefix}health", PingMessage(instance, "hello world", isEnabled = Some(math.random() < 0.5))).andThen {
       case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
     }
   }

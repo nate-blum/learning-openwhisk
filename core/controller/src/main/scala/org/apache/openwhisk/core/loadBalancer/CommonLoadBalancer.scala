@@ -51,6 +51,8 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
 
   protected implicit val executionContext: ExecutionContext = actorSystem.dispatcher
 
+//  val lbConfig: RPCHeuristicLoadBalancerConfig =
+//    loadConfigOrThrow[RPCHeuristicLoadBalancerConfig](ConfigKeys.loadbalancer)
   val lbConfig: ShardingContainerPoolBalancerConfig =
     loadConfigOrThrow[ShardingContainerPoolBalancerConfig](ConfigKeys.loadbalancer)
   protected val invokerPool: ActorRef

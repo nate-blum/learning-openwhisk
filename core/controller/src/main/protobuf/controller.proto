@@ -41,20 +41,30 @@ message GetInvocationRouteResponse {
 // map of action to its invoker states by the name of the action
 // for instance, hello1 -> (ContainerStatesByInvoker object), hello2 -> (ContainerStatesByInvoker object)
 message InvokerStateByAction {
-  map<string, ContainerStatesByInvoker> invokerStateByAction = 1;
+  map<string, InvokerStateByInvoker> invokerStateByAction = 1;
 }
 
 // map of invoker to its container states by the name of the invoker
-// for instance, panic-cloud-xs-01 -> (ContainerStateCounts object), panic-cloud-xs-02 -> (ContainerStateCounts object)
-message ContainerStatesByInvoker {
-  map<string, ContainerStateCounts> containerStatesByInvoker = 1;
+// for instance, 1 -> (ContainerStateLists object), 2 -> (ContainerStateLists object)
+message InvokerStateByInvoker {
+  map<uint64, InvokerState> invokerStateByInvoker = 1;
 }
 
 // map of container states to their counts
-// for instance, free -> 10, busy -> 5, warming -> 2
+// for instance, free -> [{ "1bh123", "0,8" }, { "1243145", "1,9" }], busy -> [{ "df356", "2,10" }, { "j5yc", "3,11" }]
 // these are per invoker and action
-message ContainerStateCounts {
-  map<string, uint32> stateCounts = 1;
+message InvokerState {
+  map<string, ContainerList> stateLists = 1;
+  uint64 freeMemoryBytes = 2;
+}
+
+message ContainerList {
+  repeated Container containers = 1;
+}
+
+message Container {
+  string id = 1;
+  string core_pin = 2; // "0,8"
 }
 
 message ClusterState {
