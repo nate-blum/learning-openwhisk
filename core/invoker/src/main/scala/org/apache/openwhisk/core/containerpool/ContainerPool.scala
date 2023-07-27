@@ -141,7 +141,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case w: BeginFullWarm =>
       if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, w.action.limits.memory.megabytes.MB)) {
         val newContainer = childFactory(context)
-        warmingPool = warmingPool + (newContainer -> w.action)
+        warmingPool = warmingPool + (newContainer -> (w.action, w.params))
 
         newContainer ! w
       } else {
@@ -437,7 +437,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Creates a new prewarmed container */
   def prewarmContainer(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration]): Unit = {
-    if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, memoryLimit)) {
+    if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memoryLimit)) {
       val newContainer = childFactory(context)
       prewarmStartingPool = prewarmStartingPool + (newContainer -> (exec.kind, memoryLimit))
       newContainer ! Start(exec, memoryLimit, ttl)
@@ -603,7 +603,7 @@ object ContainerPool {
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
     idles
       .find {
-        case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _)) if c.hasCapacity() => true
+        case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _, _)) if c.hasCapacity() => true
         case _                                                                                   => false
       }
       .orElse {
