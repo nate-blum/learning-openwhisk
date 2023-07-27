@@ -837,7 +837,7 @@ class ContainerProxy(factory: (TransactionId,
         Some(action.toWhiskAction))
       .flatMap { _ =>
         logging.info(this, "successfully initialized container")
-        Future.successful()
+        Future.successful(true)
       }
   }
 
