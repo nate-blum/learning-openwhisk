@@ -22,3 +22,11 @@ class Action(NamedTuple):
     freq: int = 3000
     type: str = None
     target_load: float = 1.0
+
+
+class ActionRealizeCounter:
+    def __init__(self):
+        self.add_success = 0
+        self.add_fail = 0
+        self.delete_success = 0
+
