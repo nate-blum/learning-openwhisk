@@ -22,6 +22,8 @@ import java.time.Instant
 import akka.Done
 import akka.actor.{ActorRef, ActorRefFactory, ActorSystem, CoordinatedShutdown, Props}
 import akka.event.Logging.InfoLevel
+import akka.pattern.ask
+import akka.util.Timeout
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ack.{MessagingActiveAck, UserEventSender}
@@ -32,7 +34,7 @@ import org.apache.openwhisk.core.containerpool.v2.{NotSupportedPoolState, TotalC
 import org.apache.openwhisk.core.database._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.invoker.Invoker.InvokerEnabled
-import org.apache.openwhisk.core.invoker.grpc.{InvokerRPCEvent, NewWarmedContainerEvent, DeleteContainerEvent}
+import org.apache.openwhisk.core.invoker.grpc.{DeleteContainerEvent, InvokerRPCEvent, NewWarmedContainerEvent}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.spi.SpiLoader
@@ -41,7 +43,7 @@ import pureconfig.generic.auto._
 import spray.json._
 
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 object InvokerReactive extends InvokerProvider {
@@ -340,7 +342,9 @@ class InvokerReactive(
 
   private def pingController(isEnabled: Boolean) = {
     logging.info(this, "sending ping")
-    healthProducer.send(s"${Invoker.topicPrefix}health", PingMessage(instance, pool.asInstanceOf[ContainerPool].actionStates(), isEnabled = Some(isEnabled))).andThen {
+    implicit val timeout: Timeout = 5 seconds
+    val actionStates: ActionStatePerInvoker = Await.result(pool ? GetActionStates, timeout.duration).asInstanceOf[ActionStatePerInvoker]
+    healthProducer.send(s"${Invoker.topicPrefix}health", PingMessage(instance, actionStates, isEnabled = Some(isEnabled))).andThen {
       case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
     }
   }

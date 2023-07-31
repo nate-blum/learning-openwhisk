@@ -162,6 +162,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       allowOpenWhiskToFreeMemory = setValue
       logging.info(this, s"now ${if (setValue) "allowing" else "not allowing"} openwhisk to kill containers to free memory")
 
+    case GetActionStates() =>
+      logging.info(this, "getting action states")
+      sender() ! this.actionStates()
+
     // A job to run on a container
     //
     // Run messages are received either via the feed or from child containers which cannot process
@@ -803,3 +807,5 @@ case class PrewarmingConfig(initialCount: Int,
                             exec: CodeExec[_],
                             memoryLimit: ByteSize,
                             reactive: Option[ReactivePrewarmingConfig] = None)
+
+case class GetActionStates()
