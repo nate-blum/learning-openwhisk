@@ -525,7 +525,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   def containerList(pool: Map[ActorRef, Any]): ContainerList = {
     ContainerList(pool collect {
       case (_, d: WarmedData) =>
-        RPCContainer(d.container.containerId.asString, d.params.get.get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
+        RPCContainer(d.container.containerId.asString, d.params.getOrElse(Map.empty).get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
       case (_, (_, p: Map[_, _])) =>
         RPCContainer("", p.asInstanceOf[Map[String, Set[String]]].get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
     })
