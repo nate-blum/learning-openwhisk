@@ -204,7 +204,7 @@ case class ContainerRemoved(replacePrewarm: Boolean) // when container is destro
 case object RescheduleJob // job is sent back to parent and could not be processed because container is being destroyed
 case class PreWarmCompleted(data: PreWarmedData)
 case class Warm(container: Container, action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
-case class WarmCompleted()
+case class WarmCompleted(data: WarmedData)
 case class InitCompleted(data: WarmedData)
 case object RunCompleted
 
@@ -392,11 +392,11 @@ class ContainerProxy(factory: (TransactionId,
       logging.info(this, "prewarm completed, warming")
       implicit val transid = w.transid
       initialize(w.container, w.action)
-        .map(_ => WarmCompleted())
+        .map(_ => WarmCompleted(WarmedData(w.container, EntityName(w.action.namespace.namespace), w.action, null, params = Some(w.params))))
         .pipeTo(self)
-      stay using WarmedData(w.container, EntityName(w.action.namespace.namespace), w.action, null, params = Some(w.params))
+      stay
 
-    case Event(WarmCompleted, data: WarmedData) =>
+    case Event(WarmCompleted(data: WarmedData), _) =>
       logging.info(this, s"warm completed, took ${Duration.between(rpcCreationStartTime, Instant.now()).toMillis}ms")
       context.parent ! NeedWork(data)
       goto(Ready) using data
