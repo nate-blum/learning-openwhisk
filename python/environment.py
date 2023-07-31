@@ -10,6 +10,7 @@ from invoker_client import invoker_pb2 as invoker_types
 from invoker_client import invoker_pb2_grpc as invoker_service
 
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
+from reward import compute_reward_using_overall_stat
 
 import training_configs  # training config
 import config  # cluster environment config
@@ -50,6 +51,10 @@ class Invoker:
         self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name, params={
             "--cpuset-cpus": "_".join([str(core) for core in pinned_core])
         }))
+
+    def rpc_delete_container(self, container_id: str, func_name: str):
+        # TODO, enable specifying the container id to delete
+        self.stub.DeleteContainer(invoker_types.DeleteContainerRequest(actionName=func_name))
 
     def is_all_core_pinned_to_uplimit(self):
         res = True
@@ -108,6 +113,8 @@ class Cluster:
     SERVER_TYPE_LIST: List[str] = list(config.cluster_spec_dict.keys())
     CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT = bool(training_configs.params['consider_container_pinning_per_core_limit'])
     MOST_RECENT_KILLED_CONTAINER_SET_LIMIT = 10
+    SERVER_POWER_SPECS = config.server_power_specs
+    RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
 
@@ -141,6 +148,7 @@ class Cluster:
             self.id_2_funcname[func_id] = name
             self.funcname_2_id[name] = func_id
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
+        self.state_info = None
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
@@ -204,7 +212,7 @@ class Cluster:
         index_min = min(range(len(score_lst)), key=score_lst.__getitem__)
         return candidate_lst[index_min]
 
-    def _select_container_to_kill_multiple_pinning(self, func_id: int, type: str) -> Optional[str]:
+    def delete_container_multiple_pinning(self, func_id: int, type: str) -> Optional[str]:
         lst_warmset: List[Set[str]] = [st for invk, st in self.func_2_warminfo[func_id].items() if invk.type == type]
         lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id].items() if invk.type == type]
         lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id].items() if invk.type == type]
@@ -221,75 +229,83 @@ class Cluster:
             for cand in candidate_lst:
                 if cand not in self.most_recent_killed_container_cache:
                     self.most_recent_killed_container_cache.append(cand)
-                    return cand # make sure only delete one
-        return None #
+                    host_invoker: Invoker = self.id_2_container[cand].invoker
+                    host_invoker.rpc_delete_container(cand, self.id_2_funcs[func_id].name)
+                    logging.info("Deleting container {} on invoker {}".format(cand, host_invoker.id))
+                    return cand  # make sure only delete one
+        return None  #
 
-
-
-
-
-def add_container_with_multiple_pinning(self, action: Action, func: Func):
-    # TODO, if no relex of action, then no need to scan the invoker set each time
-    mem_req = func.mem_req
-    target_load = action.target_load
-    candidates_pass_type: Set[Invoker] = self.type_2_invoker[action.type]
-    candidates_pass_mem: Set[Invoker] = {invoker for invoker in self.id_2_invoker.values() if
-                                         invoker.free_mem >= mem_req and not (
-                                                 self.CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT and invoker.is_all_core_pinned_to_uplimit())}
-    candidates_pass_load: Set[Invoker] = {invoker for invoker in self.id_2_invoker.values() if
-                                          invoker.last_utilization_record <= target_load}
-    # meet all
-    meet_all = candidates_pass_mem.intersection(candidates_pass_type, candidates_pass_load)
-    select_invoker = None
-    if meet_all:  # different from CPP, no relex here, check cpp code for detail
-        select_invoker = self._find_proper_invoker_to_place_container(meet_all)
-    if select_invoker:
-        self.actionRealizeCounter.add_success += 1
-        core_preference_lst = select_invoker.get_core_preference_list()
-        select_invoker.rpc_add_container(action_name=func.name, pinned_core=core_preference_lst[0:func.cpu_req])
-        logging.info("Successfully create container for function {}", func.name)
-    else:
-        self.actionRealizeCounter.add_fail += 1
-        logging.info("Fail to realize action of adding container for function {}", func.name)
-
-
-# realize the action in the openwhisk system
-def take_action(self, mapped_action: Dict[int, Action]):
-    # mapped_action: {id, Action}
-    for funcid, action in mapped_action.items():
-        if action.container_delta > 0:  # add container
-            self.add_container_with_multiple_pinning(action, self.id_2_funcs[funcid])
+    def add_container_with_multiple_pinning(self, action: Action, func: Func):
+        # TODO, if no relex of action, then no need to scan the invoker set each time
+        mem_req = func.mem_req
+        target_load = action.target_load
+        candidates_pass_type: Set[Invoker] = self.type_2_invoker[action.type]
+        candidates_pass_mem: Set[Invoker] = {invoker for invoker in self.id_2_invoker.values() if
+                                             invoker.free_mem >= mem_req and not (
+                                                     self.CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT and invoker.is_all_core_pinned_to_uplimit())}
+        candidates_pass_load: Set[Invoker] = {invoker for invoker in self.id_2_invoker.values() if
+                                              invoker.last_utilization_record <= target_load}
+        # meet all
+        meet_all = candidates_pass_mem.intersection(candidates_pass_type, candidates_pass_load)
+        select_invoker = None
+        if meet_all:  # different from CPP, no relex here, check cpp code for detail
+            select_invoker = self._find_proper_invoker_to_place_container(meet_all)
+        if select_invoker:
+            self.actionRealizeCounter.add_success += 1
+            core_preference_lst = select_invoker.get_core_preference_list()
+            select_invoker.rpc_add_container(action_name=func.name, pinned_core=core_preference_lst[0:func.cpu_req])
+            logging.info("Successfully create container for function {}", func.name)
         else:
-            pass
+            self.actionRealizeCounter.add_fail += 1
+            logging.info("Fail to realize action of adding container for function {}", func.name)
 
+    # realize the action in the openwhisk system
+    def take_action(self, mapped_action: Dict[int, Action]):
+        # mapped_action: {id, Action}
+        for funcid, action in mapped_action.items():
+            if action.container_delta > 0:  # add container
+                self.add_container_with_multiple_pinning(action, self.id_2_funcs[funcid])
+            elif action.container_delta < 0:
+                self.delete_container_multiple_pinning(func_id=funcid, type=action.type)
 
-def step(self, action: np.ndarray):
-    mapped_action: Dict[int, Action] = self._map_action(action)
+    def step(self, action: np.ndarray):
+        mapped_action: Dict[int, Action] = self._map_action(action)
+        self.take_action(mapped_action)
+        sla_latency = self.get_sla_latency_for_reward()  # contain all function, not jut active function
+        type_2_utilizations = self.compute_utilization()
+        reward_dict = compute_reward_using_overall_stat(type_2_utilizations=type_2_utilizations,
+                                                        func_2_latencies=sla_latency,
+                                                        server_power_specs=self.SERVER_POWER_SPECS,
+                                                        latency_factor=self.RATIO_BASED_LATENCY_FACTOR)
+        state = self.get_obs()
+        return state, reward_dict, False,False, self.state_info
 
+    # get the features of All function so that to choose the active working functions.
+    def select_from_all_state(self, time_window_size_millis: int, coeff: float, bucket_millis: int) -> None:
+        pass
 
-# get the features of All function so that to choose the active working functions.
-def select_from_all_state(self, time_window_size_millis: int, coeff: float, bucket_millis: int) -> None:
-    pass
+    def get_sla_latency_for_reward(self):
+        pass
 
+    def compute_utilization(self)->Dict:
+        pass
 
-def get_obs(self):
-    pass
+    def get_obs(self):
+        pass
 
+    def register_func(self, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
+        # TODO, register into the openwhisk system
+        func_id = self.func_id_counter
+        self.id_2_funcs[func_id] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
+                                        cpu_req=cpu_req,
+                                        invoker_2_referenceExecTime=invoker_2_referenceExecTime)
+        self.func_id_counter += 1  # increase the function id counter
+        return func_id
 
-def register_func(self, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
-    func_id = self.func_id_counter
-    self.id_2_funcs[func_id] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
-                                    cpu_req=cpu_req,
-                                    invoker_2_referenceExecTime=invoker_2_referenceExecTime)
-    self.func_id_counter += 1  # increase the function id counter
-    return func_id
+    def delete_container(self, func_id):
+        pass
 
-
-def delete_container(self, func_id):
-    pass
-
-
-# ----------for collecting runtime info---------
-def get_avg_busy_container_utilization_per_type(self, func_ids: List):
-    # get avg container utilization per type for each function
-    pass
+    # ----------for collecting runtime info---------
+    def get_avg_busy_container_utilization_per_type(self, func_ids: List):
+        # get avg container utilization per type for each function
+        pass
