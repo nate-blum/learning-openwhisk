@@ -540,12 +540,18 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def actionStates(): ActionStatePerInvoker = {
+    println("free")
+    println(freePool)
+    println("busy")
+    println(busyPool)
+    println("warming")
+    println(warmingPool)
     val actions: Set[String] = (Set(freePool, busyPool) flatMap { pool => pool.map(_._2.asInstanceOf[WarmedData].action.name.name) }) ++ warmingPool.map(_._2._1.name.name)
     ActionStatePerInvoker(actions.map(action => action -> actionState(action)).toMap, freeMemoryMB())
   }
 
   private def freeMemoryMB(): Long = {
-    val memoryUsed = List(freePool, busyPool, prewarmedPool).map(memoryConsumptionOf).sum + prewarmStartingPool.map(_._2._2.toMB).sum
+    val memoryUsed = List(freePool, busyPool, prewarmedPool).map(memoryConsumptionOf).sum + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB)
     poolConfig.userMemory.toMB - memoryUsed
   }
 
