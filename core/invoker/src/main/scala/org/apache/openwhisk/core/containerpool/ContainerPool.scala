@@ -551,7 +551,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   private def freeMemoryMB(): Long = {
-    val memoryUsed = List(freePool, busyPool, prewarmedPool).map(memoryConsumptionOf).sum + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB)
+    val memoryUsed = List(freePool, busyPool, prewarmedPool).map(memoryConsumptionOf).sum + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB).sum
     poolConfig.userMemory.toMB - memoryUsed
   }
 
