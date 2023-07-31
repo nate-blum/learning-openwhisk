@@ -22,7 +22,11 @@ max_num_update = 4000
 init_std = [10 ** 2, 10 ** 2, 10 ** 2, 10 ** 2]  # [func1Delta, func1Type, func2Delta, func2Type]
 min_std = [0.5, 0.5, 0.5, 0.5]
 std_decay = 0.9998
+#-----------------Action Mapping------------------------------------
 action_mapping_boundary = 10
+type_mapping_boundary = [0]
+#-------------------------------------------------------------------
+
 
 select_func_params = {
     'more_than_2_funcs': True,
