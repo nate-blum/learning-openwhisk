@@ -533,8 +533,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   private def actionState(actionName: String): ActionState = {
     ActionState(Map(
-      "free" -> containerList(freePool.filter(_._2.asInstanceOf[WarmedData].action.name.name == actionName)),
-      "busy" -> containerList(busyPool.filter(_._2.asInstanceOf[WarmedData].action.name.name == actionName)),
+      "free" -> containerList(freePool.filter(_._2.asInstanceOf[ContainerInUse].action.name.name == actionName)),
+      "busy" -> containerList(busyPool.filter(_._2.asInstanceOf[ContainerInUse].action.name.name == actionName)),
       "warming" -> containerList(warmingPool.filter(_._2._1.name.name == actionName))
     ))
   }
@@ -546,7 +546,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     println(busyPool)
     println("warming")
     println(warmingPool)
-    val actions: Set[String] = (Set(freePool, busyPool) flatMap { pool => pool.map(_._2.asInstanceOf[WarmedData].action.name.name) }) ++ warmingPool.map(_._2._1.name.name)
+    val actions: Set[String] = (Set(freePool, busyPool) flatMap { pool => pool.map(_._2.asInstanceOf[ContainerInUse].action.name.name) }) ++ warmingPool.map(_._2._1.name.name)
     ActionStatePerInvoker(actions.map(action => action -> actionState(action)).toMap, freeMemoryMB())
   }
 
