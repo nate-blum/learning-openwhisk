@@ -36,7 +36,7 @@ message EmptyRequest {} // placeholder type for request
 
 message GetArrivalInfoResponse {
    map<uint32, uint32> query_count_1s = 1;
-   map<uint32, uint32> query_count_5s = 2;
+   map<uint32, uint32> query_count_3s = 2;
 }
 
 message GetInvocationRouteRequest {
