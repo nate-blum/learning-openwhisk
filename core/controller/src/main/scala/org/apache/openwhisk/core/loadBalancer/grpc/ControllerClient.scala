@@ -10,7 +10,7 @@ import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
 class ControllerClient()(implicit actorSystem: ActorSystem, logging: Logging) {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
-  private val clientSettings: GrpcClientSettings = GrpcClientSettings.connectToServiceAt("127.0.0.1", 50051).withTls(false)
+  private val clientSettings: GrpcClientSettings = GrpcClientSettings.connectToServiceAt("172.17.0.1", 50051).withTls(false)
   val client: ControllerService = ControllerServiceClient(clientSettings)
 
   def executeRoutingRequest(actionName: String): GetInvocationRouteResponse = {
