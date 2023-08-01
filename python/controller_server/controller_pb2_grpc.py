@@ -24,6 +24,11 @@ class ControllerServiceStub(object):
                 request_serializer=controller__pb2.UpdateClusterStateRequest.SerializeToString,
                 response_deserializer=controller__pb2.UpdateClusterStateResponse.FromString,
                 )
+        self.GetArrivalInfo = channel.unary_unary(
+                '/controller.ControllerService/GetArrivalInfo',
+                request_serializer=controller__pb2.EmptyRequest.SerializeToString,
+                response_deserializer=controller__pb2.GetArrivalInfoResponse.FromString,
+                )
 
 
 class ControllerServiceServicer(object):
@@ -41,6 +46,12 @@ class ControllerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetArrivalInfo(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ControllerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -53,6 +64,11 @@ def add_ControllerServiceServicer_to_server(servicer, server):
                     servicer.UpdateClusterState,
                     request_deserializer=controller__pb2.UpdateClusterStateRequest.FromString,
                     response_serializer=controller__pb2.UpdateClusterStateResponse.SerializeToString,
+            ),
+            'GetArrivalInfo': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetArrivalInfo,
+                    request_deserializer=controller__pb2.EmptyRequest.FromString,
+                    response_serializer=controller__pb2.GetArrivalInfoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -95,5 +111,22 @@ class ControllerService(object):
         return grpc.experimental.unary_unary(request, target, '/controller.ControllerService/UpdateClusterState',
             controller__pb2.UpdateClusterStateRequest.SerializeToString,
             controller__pb2.UpdateClusterStateResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetArrivalInfo(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/controller.ControllerService/GetArrivalInfo',
+            controller__pb2.EmptyRequest.SerializeToString,
+            controller__pb2.GetArrivalInfoResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

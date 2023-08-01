@@ -28,6 +28,15 @@ service ControllerService {
   rpc GetInvocationRoute (GetInvocationRouteRequest) returns (GetInvocationRouteResponse) {}
 
   rpc UpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
+
+  rpc GetArrivalInfo (EmptyRequest) returns (GetArrivalInfoResponse) {}
+}
+
+message EmptyRequest {} // placeholder type for request
+
+message GetArrivalInfoResponse {
+   map<uint32, uint32> query_count_1s = 1;
+   map<uint32, uint32> query_count_5s = 2;
 }
 
 message GetInvocationRouteRequest {

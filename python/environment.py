@@ -1,13 +1,17 @@
 import logging
-from typing import Dict, List, Deque, NamedTuple, Union, Optional, Set, Final
+from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
 from operator import itemgetter
 import grpc
 import numpy as np
+from concurrent import futures
 from collections import deque
 from itertools import chain
 from bisect import bisect
 from invoker_client import invoker_pb2 as invoker_types
 from invoker_client import invoker_pb2_grpc as invoker_service
+from controller_server.server import ControllerService
+from controller_server import controller_pb2 as controller_types
+from  controller_server import controller_pb2_grpc as controller_service
 
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
 from reward import compute_reward_using_overall_stat
@@ -98,15 +102,9 @@ class Monitor:
         self.func_2_nColdStart = {}
 
 
-# class Loadbalancer:
-#     def __init__(self) -> None:
-#         pass
-#
-#     def route_invocation(func_id) -> int:
-#         raise NotImplementedError
-
-
 class Cluster:
+    SERVER_RPC_THREAD_COUNT = 4
+    RPC_SERVER_PORT = "" # RPC server port
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
     ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
     TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
@@ -128,9 +126,9 @@ class Cluster:
         self.func_2_busyinfo: Dict[int, Dict[Invoker, Set[str]]] = {}
         self.func_2_warminginfo: Dict[int, Dict[Invoker, Set[str]]] = {}
 
-        self.func_2_warminfoSorted = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
-        self.func_2_busyinfoSorted = {}
-        self.func_2_warminginfoSorted = {}
+        self.func_2_warminfoSorted:Dict[int, List[Tuple[Invoker,int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
+        self.func_2_busyinfoSorted:Dict[int, List[Tuple[Invoker,int]]] = {}
+        self.func_2_warminginfoSorted:Dict[int, List[Tuple[Invoker,int]]] = {}
 
         # FIFO
         self.most_recent_killed_container_cache: Deque[str] = deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
@@ -149,6 +147,13 @@ class Cluster:
             self.funcname_2_id[name] = func_id
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
+        self.rpc_server = self._set_up_rpc_server()
+    def _set_up_rpc_server(self):
+        rpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=self.SERVER_RPC_THREAD_COUNT))
+        controller_service.add_ControllerServiceServicer_to_server(ControllerService(), rpc_server)
+        rpc_server.add_insecure_port( f"0.0.0.0:{self.RPC_SERVER_PORT}")
+        rpc_server.start() # non blocking
+        return rpc_server
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
@@ -158,7 +163,7 @@ class Cluster:
         pass
 
     # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
-    def route_invocation(self, func_id) -> Union[int, RoutingResult]:
+    def route_invocation(self, func_id) -> Union[Tuple[Invoker,int], RoutingResult]:
         warminfo_sorted = self.func_2_warminfoSorted[func_id]
         if warminfo_sorted:
             return warminfo_sorted[0]  # invoker with the maximum of number of warm container for the function
