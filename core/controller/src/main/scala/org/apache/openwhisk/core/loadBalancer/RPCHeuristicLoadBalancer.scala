@@ -41,6 +41,7 @@ import org.apache.openwhisk.spi.SpiLoader
 
 import scala.collection.mutable
 import scala.concurrent.Future
+import scala.concurrent.duration.FiniteDuration
 
 class RPCHeuristicLoadBalancer(
              config: WhiskConfig,
@@ -361,6 +362,11 @@ case class RPCHeuristicLoadBalancerState(
 
 /**
  * Configuration for the sharding container pool balancer.
+ *
+ * @param timeoutFactor factor to influence the timeout period for forced active acks (time-limit.std * timeoutFactor + timeoutAddon)
+ * @param timeoutAddon extra time to influence the timeout period for forced active acks (time-limit.std * timeoutFactor + timeoutAddon)
  */
 case class RPCHeuristicLoadBalancerConfig(managedFraction: Double,
-                                          sendAllUpdateRequests: Boolean)
+                                          sendAllUpdateRequests: Boolean,
+                                          timeoutFactor: Int,
+                                          timeoutAddon: FiniteDuration)
