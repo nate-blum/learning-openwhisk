@@ -14,6 +14,11 @@ class WskControllerService(controller_service.ControllerServiceServicer):
         func_id = 0 # TODO
         self.func_2_arrivalQueue[func_id].append(t)
         return controller_types.GetInvocationRouteResponse(invokerHost="panic-cloud-xs-01.cs.rutgers.edu:50051")
+    def GetArrivalInfo(self, request, context):
+        return controller_types.GetArrivalInfoResponse(query_count_1s={}, query_count_5s={})
+
+
+
 
 
 class LoadBalance:
