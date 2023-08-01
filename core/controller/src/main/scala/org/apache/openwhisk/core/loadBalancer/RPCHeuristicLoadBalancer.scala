@@ -66,7 +66,7 @@ class RPCHeuristicLoadBalancer(
     None
   }
 
-  private val client: ControllerClient = ControllerClient()
+  private val client: ControllerClient = new ControllerClient()
 
   override protected def emitMetrics() = {
     super.emitMetrics()
