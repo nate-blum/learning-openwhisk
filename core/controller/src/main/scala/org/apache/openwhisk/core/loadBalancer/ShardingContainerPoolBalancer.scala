@@ -203,7 +203,7 @@ class ShardingContainerPoolBalancer(
   }
 
   /** State needed for scheduling. */
-  val schedulingState = ShardingContainerPoolBalancerState()(lbConfig)
+  val schedulingState = ShardingContainerPoolBalancerState()(lbConfig.asInstanceOf[ShardingContainerPoolBalancerConfig])
 
   /**
    * Monitors invoker supervision and the cluster to update the state sequentially

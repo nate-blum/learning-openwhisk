@@ -18,8 +18,7 @@
 package org.apache.openwhisk.core.loadBalancer
 
 import java.nio.charset.StandardCharsets
-
-import scala.collection.immutable
+import scala.collection.{immutable, mutable}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.util.Failure
@@ -59,6 +58,7 @@ case class InvocationFinishedMessage(invokerInstance: InvokerInstanceId, result:
 
 // Sent to a monitor if the state changed
 case class CurrentInvokerPoolState(newState: IndexedSeq[InvokerHealth])
+case class RPCInvokerPoolState(newState: IndexedSeq[InvokerHealth], invokerClusterState: InvokerClusterState)
 
 // Data stored in the Invoker
 final case class InvokerInfo(buffer: RingBuffer[InvocationFinishedResult])
@@ -92,7 +92,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
   var instanceToRef = immutable.Map.empty[Int, ActorRef]
   var refToInstance = immutable.Map.empty[ActorRef, InvokerInstanceId]
   var status = IndexedSeq[InvokerHealth]()
-  var invokerClusterState: InvokerClusterState = InvokerClusterState(Map.empty)
+  var invokerClusterState: InvokerClusterState = InvokerClusterState(mutable.Map.empty)
 
   def receive: Receive = {
     case p: PingMessage =>
@@ -106,6 +106,8 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
         status = status.updated(p.instance.toInt, new InvokerHealth(p.instance, oldHealth.status))
         refToInstance = refToInstance.updated(invoker, p.instance)
       }
+
+      invokerClusterState.actionStatePerInvoker.update(p.instance.toInt, p.actionStates)
 
       invoker.forward(p)
 
@@ -134,7 +136,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
   }
 
   def logStatus(): Unit = {
-    monitor.foreach(_ ! CurrentInvokerPoolState(status))
+    monitor.foreach(_ ! RPCInvokerPoolState(status, invokerClusterState))
     val pretty = status.map(i => s"${i.id.toInt} -> ${i.status}")
     logging.info(this, s"invoker status changed to ${pretty.mkString(", ")}")
   }

@@ -857,11 +857,6 @@ class ContainerProxy(factory: (TransactionId,
   def initializeAndRun(container: Container, job: Run, reschedule: Boolean = false)(
     implicit tid: TransactionId): Future[WhiskActivation] = {
     val actionTimeout = job.action.limits.timeout.duration
-    val vars = job.msg.getClass.getDeclaredFields
-      for (v <- vars) {
-        v.setAccessible(true)
-        println("Field: " + v.getName() + " => " + v.get(job.msg))
-      }
     val unlockedArgs =
       ContainerProxy.unlockArguments(job.msg.content, job.msg.lockedArgs, ParameterEncryption.singleton)
 

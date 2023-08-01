@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import wrappers_pb2 as google_dot_protobuf_dot_wrappers__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x63ontroller.proto\x12\ncontroller\x1a\x1egoogle/protobuf/wrappers.proto\"\x0e\n\x0c\x45mptyRequest\"\x9e\x02\n\x16GetArrivalInfoResponse\x12L\n\x0equery_count_1s\x18\x01 \x03(\x0b\x32\x34.controller.GetArrivalInfoResponse.QueryCount1sEntry\x12L\n\x0equery_count_5s\x18\x02 \x03(\x0b\x32\x34.controller.GetArrivalInfoResponse.QueryCount5sEntry\x1a\x33\n\x11QueryCount1sEntry\x12\x0b\n\x03key\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\x1a\x33\n\x11QueryCount5sEntry\x12\x0b\n\x03key\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\"/\n\x19GetInvocationRouteRequest\x12\x12\n\nactionName\x18\x01 \x01(\t\"1\n\x1aGetInvocationRouteResponse\x12\x13\n\x0binvokerHost\x18\x01 \x01(\t\"\xd3\x01\n\x14InvokerStateByAction\x12X\n\x14invokerStateByAction\x18\x01 \x03(\x0b\x32:.controller.InvokerStateByAction.InvokerStateByActionEntry\x1a\x61\n\x19InvokerStateByActionEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x33\n\x05value\x18\x02 \x01(\x0b\x32$.controller.ContainerStatesByInvoker:\x02\x38\x01\"\xe3\x01\n\x18\x43ontainerStatesByInvoker\x12\x64\n\x18\x63ontainerStatesByInvoker\x18\x01 \x03(\x0b\x32\x42.controller.ContainerStatesByInvoker.ContainerStatesByInvokerEntry\x1a\x61\n\x1d\x43ontainerStatesByInvokerEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12/\n\x05value\x18\x02 \x01(\x0b\x32 .controller.ContainerStateCounts:\x02\x38\x01\"\x92\x01\n\x14\x43ontainerStateCounts\x12\x46\n\x0bstateCounts\x18\x01 \x03(\x0b\x32\x31.controller.ContainerStateCounts.StateCountsEntry\x1a\x32\n\x10StateCountsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\"]\n\x0c\x43lusterState\x12\x1b\n\x13healthyInvokerCount\x18\x01 \x01(\r\x12\x30\n\x06states\x18\x02 \x01(\x0b\x32 .controller.InvokerStateByAction\"K\n\x19UpdateClusterStateRequest\x12.\n\x0c\x63lusterState\x18\x01 \x01(\x0b\x32\x18.controller.ClusterState\"\x1c\n\x1aUpdateClusterStateResponse2\xb3\x02\n\x11\x43ontrollerService\x12\x65\n\x12GetInvocationRoute\x12%.controller.GetInvocationRouteRequest\x1a&.controller.GetInvocationRouteResponse\"\x00\x12\x65\n\x12UpdateClusterState\x12%.controller.UpdateClusterStateRequest\x1a&.controller.UpdateClusterStateResponse\"\x00\x12P\n\x0eGetArrivalInfo\x12\x18.controller.EmptyRequest\x1a\".controller.GetArrivalInfoResponse\"\x00\x42.\n\x19org.apache.openwhisk.grpcB\x0f\x43ontrollerProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x63ontroller.proto\x12\ncontroller\x1a\x1egoogle/protobuf/wrappers.proto\"\x0e\n\x0c\x45mptyRequest\"\x9e\x02\n\x16GetArrivalInfoResponse\x12L\n\x0equery_count_1s\x18\x01 \x03(\x0b\x32\x34.controller.GetArrivalInfoResponse.QueryCount1sEntry\x12L\n\x0equery_count_5s\x18\x02 \x03(\x0b\x32\x34.controller.GetArrivalInfoResponse.QueryCount5sEntry\x1a\x33\n\x11QueryCount1sEntry\x12\x0b\n\x03key\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\x1a\x33\n\x11QueryCount5sEntry\x12\x0b\n\x03key\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\"/\n\x19GetInvocationRouteRequest\x12\x12\n\nactionName\x18\x01 \x01(\t\"7\n\x1aGetInvocationRouteResponse\x12\x19\n\x11invokerInstanceId\x18\x01 \x01(\x05\"\xd1\x01\n\x13InvokerClusterState\x12Y\n\x15\x61\x63tionStatePerInvoker\x18\x01 \x03(\x0b\x32:.controller.InvokerClusterState.ActionStatePerInvokerEntry\x1a_\n\x1a\x41\x63tionStatePerInvokerEntry\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\x30\n\x05value\x18\x02 \x01(\x0b\x32!.controller.ActionStatePerInvoker:\x02\x38\x01\"\xc6\x01\n\x15\x41\x63tionStatePerInvoker\x12I\n\x0c\x61\x63tionStates\x18\x01 \x03(\x0b\x32\x33.controller.ActionStatePerInvoker.ActionStatesEntry\x12\x14\n\x0c\x66reeMemoryMB\x18\x02 \x01(\x03\x1aL\n\x11\x41\x63tionStatesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12&\n\x05value\x18\x02 \x01(\x0b\x32\x17.controller.ActionState:\x02\x38\x01\"\x98\x01\n\x0b\x41\x63tionState\x12;\n\nstateLists\x18\x01 \x03(\x0b\x32\'.controller.ActionState.StateListsEntry\x1aL\n\x0fStateListsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12(\n\x05value\x18\x02 \x01(\x0b\x32\x19.controller.ContainerList:\x02\x38\x01\"=\n\rContainerList\x12,\n\ncontainers\x18\x01 \x03(\x0b\x32\x18.controller.RPCContainer\",\n\x0cRPCContainer\x12\n\n\x02id\x18\x01 \x01(\t\x12\x10\n\x08\x63ore_pin\x18\x02 \x01(\t\"R\n\x19UpdateClusterStateRequest\x12\x35\n\x0c\x63lusterState\x18\x01 \x01(\x0b\x32\x1f.controller.InvokerClusterState\"\x1c\n\x1aUpdateClusterStateResponse2\xb3\x02\n\x11\x43ontrollerService\x12\x65\n\x12GetInvocationRoute\x12%.controller.GetInvocationRouteRequest\x1a&.controller.GetInvocationRouteResponse\"\x00\x12\x65\n\x12UpdateClusterState\x12%.controller.UpdateClusterStateRequest\x1a&.controller.UpdateClusterStateResponse\"\x00\x12P\n\x0eGetArrivalInfo\x12\x18.controller.EmptyRequest\x1a\".controller.GetArrivalInfoResponse\"\x00\x42.\n\x19org.apache.openwhisk.grpcB\x0f\x43ontrollerProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -27,12 +27,12 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _GETARRIVALINFORESPONSE_QUERYCOUNT1SENTRY._serialized_options = b'8\001'
   _GETARRIVALINFORESPONSE_QUERYCOUNT5SENTRY._options = None
   _GETARRIVALINFORESPONSE_QUERYCOUNT5SENTRY._serialized_options = b'8\001'
-  _INVOKERSTATEBYACTION_INVOKERSTATEBYACTIONENTRY._options = None
-  _INVOKERSTATEBYACTION_INVOKERSTATEBYACTIONENTRY._serialized_options = b'8\001'
-  _CONTAINERSTATESBYINVOKER_CONTAINERSTATESBYINVOKERENTRY._options = None
-  _CONTAINERSTATESBYINVOKER_CONTAINERSTATESBYINVOKERENTRY._serialized_options = b'8\001'
-  _CONTAINERSTATECOUNTS_STATECOUNTSENTRY._options = None
-  _CONTAINERSTATECOUNTS_STATECOUNTSENTRY._serialized_options = b'8\001'
+  _INVOKERCLUSTERSTATE_ACTIONSTATEPERINVOKERENTRY._options = None
+  _INVOKERCLUSTERSTATE_ACTIONSTATEPERINVOKERENTRY._serialized_options = b'8\001'
+  _ACTIONSTATEPERINVOKER_ACTIONSTATESENTRY._options = None
+  _ACTIONSTATEPERINVOKER_ACTIONSTATESENTRY._serialized_options = b'8\001'
+  _ACTIONSTATE_STATELISTSENTRY._options = None
+  _ACTIONSTATE_STATELISTSENTRY._serialized_options = b'8\001'
   _globals['_EMPTYREQUEST']._serialized_start=64
   _globals['_EMPTYREQUEST']._serialized_end=78
   _globals['_GETARRIVALINFORESPONSE']._serialized_start=81
@@ -44,25 +44,27 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_GETINVOCATIONROUTEREQUEST']._serialized_start=369
   _globals['_GETINVOCATIONROUTEREQUEST']._serialized_end=416
   _globals['_GETINVOCATIONROUTERESPONSE']._serialized_start=418
-  _globals['_GETINVOCATIONROUTERESPONSE']._serialized_end=467
-  _globals['_INVOKERSTATEBYACTION']._serialized_start=470
-  _globals['_INVOKERSTATEBYACTION']._serialized_end=681
-  _globals['_INVOKERSTATEBYACTION_INVOKERSTATEBYACTIONENTRY']._serialized_start=584
-  _globals['_INVOKERSTATEBYACTION_INVOKERSTATEBYACTIONENTRY']._serialized_end=681
-  _globals['_CONTAINERSTATESBYINVOKER']._serialized_start=684
-  _globals['_CONTAINERSTATESBYINVOKER']._serialized_end=911
-  _globals['_CONTAINERSTATESBYINVOKER_CONTAINERSTATESBYINVOKERENTRY']._serialized_start=814
-  _globals['_CONTAINERSTATESBYINVOKER_CONTAINERSTATESBYINVOKERENTRY']._serialized_end=911
-  _globals['_CONTAINERSTATECOUNTS']._serialized_start=914
-  _globals['_CONTAINERSTATECOUNTS']._serialized_end=1060
-  _globals['_CONTAINERSTATECOUNTS_STATECOUNTSENTRY']._serialized_start=1010
-  _globals['_CONTAINERSTATECOUNTS_STATECOUNTSENTRY']._serialized_end=1060
-  _globals['_CLUSTERSTATE']._serialized_start=1062
-  _globals['_CLUSTERSTATE']._serialized_end=1155
-  _globals['_UPDATECLUSTERSTATEREQUEST']._serialized_start=1157
-  _globals['_UPDATECLUSTERSTATEREQUEST']._serialized_end=1232
-  _globals['_UPDATECLUSTERSTATERESPONSE']._serialized_start=1234
-  _globals['_UPDATECLUSTERSTATERESPONSE']._serialized_end=1262
-  _globals['_CONTROLLERSERVICE']._serialized_start=1265
-  _globals['_CONTROLLERSERVICE']._serialized_end=1572
+  _globals['_GETINVOCATIONROUTERESPONSE']._serialized_end=473
+  _globals['_INVOKERCLUSTERSTATE']._serialized_start=476
+  _globals['_INVOKERCLUSTERSTATE']._serialized_end=685
+  _globals['_INVOKERCLUSTERSTATE_ACTIONSTATEPERINVOKERENTRY']._serialized_start=590
+  _globals['_INVOKERCLUSTERSTATE_ACTIONSTATEPERINVOKERENTRY']._serialized_end=685
+  _globals['_ACTIONSTATEPERINVOKER']._serialized_start=688
+  _globals['_ACTIONSTATEPERINVOKER']._serialized_end=886
+  _globals['_ACTIONSTATEPERINVOKER_ACTIONSTATESENTRY']._serialized_start=810
+  _globals['_ACTIONSTATEPERINVOKER_ACTIONSTATESENTRY']._serialized_end=886
+  _globals['_ACTIONSTATE']._serialized_start=889
+  _globals['_ACTIONSTATE']._serialized_end=1041
+  _globals['_ACTIONSTATE_STATELISTSENTRY']._serialized_start=965
+  _globals['_ACTIONSTATE_STATELISTSENTRY']._serialized_end=1041
+  _globals['_CONTAINERLIST']._serialized_start=1043
+  _globals['_CONTAINERLIST']._serialized_end=1104
+  _globals['_RPCCONTAINER']._serialized_start=1106
+  _globals['_RPCCONTAINER']._serialized_end=1150
+  _globals['_UPDATECLUSTERSTATEREQUEST']._serialized_start=1152
+  _globals['_UPDATECLUSTERSTATEREQUEST']._serialized_end=1234
+  _globals['_UPDATECLUSTERSTATERESPONSE']._serialized_start=1236
+  _globals['_UPDATECLUSTERSTATERESPONSE']._serialized_end=1264
+  _globals['_CONTROLLERSERVICE']._serialized_start=1267
+  _globals['_CONTROLLERSERVICE']._serialized_end=1574
 # @@protoc_insertion_point(module_scope)
