@@ -362,11 +362,6 @@ case class RPCHeuristicLoadBalancerState(
 
 /**
  * Configuration for the sharding container pool balancer.
- *
- * @param timeoutFactor factor to influence the timeout period for forced active acks (time-limit.std * timeoutFactor + timeoutAddon)
- * @param timeoutAddon extra time to influence the timeout period for forced active acks (time-limit.std * timeoutFactor + timeoutAddon)
  */
 case class RPCHeuristicLoadBalancerConfig(managedFraction: Double,
-                                          sendAllUpdateRequests: Boolean,
-                                          timeoutFactor: Int,
-                                          timeoutAddon: FiniteDuration)
+                                          sendAllUpdateRequests: Boolean)
