@@ -142,7 +142,7 @@ class RPCHeuristicLoadBalancer(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
 
     val invoker: Option[InvokerInstanceId] = schedulingState.invokers.find(_.id.instance == client.executeRoutingRequest(action.name.name).invokerInstanceId).map(_.id)
-    logging.info(this, s"found invoker ${invoker.get}")
+    logging.info(this, if (invoker.isDefined) s"found invoker ${invoker.get}" else "no invoker found")
 
     invoker map {
       id => // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
