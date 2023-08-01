@@ -41,7 +41,6 @@ import org.apache.openwhisk.spi.SpiLoader
 
 import scala.collection.mutable
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 class RPCHeuristicLoadBalancer(
              config: WhiskConfig,
