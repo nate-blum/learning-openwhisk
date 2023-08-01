@@ -341,7 +341,6 @@ class InvokerReactive(
     Scheduler.scheduleWaitAtMost(1.seconds)(() => pingController(isEnabled = true))
 
   private def pingController(isEnabled: Boolean) = {
-    logging.info(this, "sending ping")
     implicit val timeout: Timeout = 10.seconds
     val actionStates: ActionStatePerInvoker = Await.result(pool ? GetActionStates(), timeout.duration).asInstanceOf[ActionStatePerInvoker]
     healthProducer.send(s"${Invoker.topicPrefix}health", PingMessage(instance, actionStates, isEnabled = Some(isEnabled))).andThen {

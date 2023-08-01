@@ -20,6 +20,8 @@ package org.apache.openwhisk.common
 import org.apache.openwhisk.core.entity.InvokerInstanceId
 import spray.json._
 
+import scala.collection.mutable
+
 case object GracefulShutdown
 case object Enable
 
@@ -73,7 +75,7 @@ object ActionStatePerInvokerJsonProtocol extends DefaultJsonProtocol {
   implicit val actionStatePerInvokerFormat = jsonFormat2(ActionStatePerInvoker)
 }
 
-case class InvokerClusterState(actionStatePerInvoker: Map[Int, ActionStatePerInvoker])
+case class InvokerClusterState(actionStatePerInvoker: mutable.Map[Int, ActionStatePerInvoker])
 
 /**
  * Describes an abstract invoker. An invoker is a local container pool manager that

@@ -1,1 +1,2 @@
 grpcio-tools==1.56.0
+grpcio-reflection==1.56.2

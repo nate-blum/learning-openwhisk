@@ -35,8 +35,8 @@ service ControllerService {
 message EmptyRequest {} // placeholder type for request
 
 message GetArrivalInfoResponse {
-   map<uint32, uint32> query_count_1s = 1;
-   map<uint32, uint32> query_count_5s = 2;
+  map<uint32, uint32> query_count_1s = 1;
+  map<uint32, uint32> query_count_5s = 2;
 }
 
 message GetInvocationRouteRequest {
@@ -44,35 +44,40 @@ message GetInvocationRouteRequest {
 }
 
 message GetInvocationRouteResponse {
-  string invokerHost = 1;
+  int32 invokerInstanceId = 1;
 }
 
-// map of action to its invoker states by the name of the action
-// for instance, hello1 -> (ContainerStatesByInvoker object), hello2 -> (ContainerStatesByInvoker object)
-message InvokerStateByAction {
-  map<string, ContainerStatesByInvoker> invokerStateByAction = 1;
+// map of invoker state to its action states by the id of the invoker
+// for instance, 1 -> (ActionStatePerInvoker object), 2 -> (ActionStatePerInvoker object)
+message InvokerClusterState {
+  map<int32, ActionStatePerInvoker> actionStatePerInvoker = 1;
 }
 
-// map of invoker to its container states by the name of the invoker
-// for instance, panic-cloud-xs-01 -> (ContainerStateCounts object), panic-cloud-xs-02 -> (ContainerStateCounts object)
-message ContainerStatesByInvoker {
-  map<string, ContainerStateCounts> containerStatesByInvoker = 1;
+// map of action to its container states by the name of the action
+// for instance, hello1 -> (ActionState object), panic-cloud-xs-02 -> (ContainerStateCounts object)
+message ActionStatePerInvoker {
+  map<string, ActionState> actionStates = 1;
+  int64 freeMemoryMB = 2;
 }
 
 // map of container states to their counts
 // for instance, free -> 10, busy -> 5, warming -> 2
 // these are per invoker and action
-message ContainerStateCounts {
-  map<string, uint32> stateCounts = 1;
+message ActionState {
+  map<string, ContainerList> stateLists = 1;
 }
 
-message ClusterState {
-  uint32 healthyInvokerCount = 1;
-  InvokerStateByAction states = 2;
+message ContainerList {
+  repeated RPCContainer containers = 1;
+}
+
+message RPCContainer {
+  string id = 1;
+  string core_pin = 2;
 }
 
 message UpdateClusterStateRequest {
-  ClusterState clusterState = 1;
+  InvokerClusterState clusterState = 1;
 }
 
 message UpdateClusterStateResponse {}
