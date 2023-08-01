@@ -20,8 +20,7 @@ package org.apache.openwhisk.core.loadBalancer
 import akka.actor.ActorRef
 import akka.actor.ActorRefFactory
 
-import java.util.concurrent.ThreadLocalRandom
-import akka.actor.{Actor, ActorSystem, Cancellable, Props}
+import akka.actor.{Actor, ActorSystem, Props}
 import akka.cluster.ClusterEvent._
 import akka.cluster.{Cluster, Member, MemberStatus}
 import akka.management.scaladsl.AkkaManagement
@@ -40,7 +39,6 @@ import org.apache.openwhisk.core.loadBalancer.grpc.ControllerClient
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.spi.SpiLoader
 
-import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
