@@ -1,0 +1,64 @@
+/*
+* Licensed to the Apache Software Foundation (ASF) under one or more
+* contributor license agreements.  See the NOTICE file distributed with
+* this work for additional information regarding copyright ownership.
+* The ASF licenses this file to You under the Apache License, Version 2.0
+* (the "License"); you may not use this file except in compliance with
+* the License.  You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+syntax = "proto3";
+import "google/protobuf/wrappers.proto";
+
+option java_multiple_files = true;
+option java_package = "org.apache.openwhisk.grpc";
+option java_outer_classname = "ClusterStateProto";
+
+package controller;
+
+service ClusterStateService {
+  rpc UpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
+}
+
+// map of invoker state to its action states by the id of the invoker
+// for instance, 1 -> (ActionStatePerInvoker object), 2 -> (ActionStatePerInvoker object)
+message InvokerClusterState {
+  map<int32, ActionStatePerInvoker> actionStatePerInvoker = 1;
+}
+
+// map of action to its container states by the name of the action
+// for instance, hello1 -> (ActionState object), panic-cloud-xs-02 -> (ContainerStateCounts object)
+message ActionStatePerInvoker {
+  map<string, ActionState> actionStates = 1;
+  int64 freeMemoryMB = 2;
+}
+
+// map of container states to their counts
+// for instance, free -> 10, busy -> 5, warming -> 2
+// these are per invoker and action
+message ActionState {
+  map<string, ContainerList> stateLists = 1;
+}
+
+message ContainerList {
+  repeated RPCContainer containers = 1;
+}
+
+message RPCContainer {
+  string id = 1;
+  string core_pin = 2;
+}
+
+message UpdateClusterStateRequest {
+  InvokerClusterState clusterState = 1;
+}
+
+message UpdateClusterStateResponse {}
