@@ -2,10 +2,11 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import controller_pb2 as controller__pb2
+import clusterstate_pb2 as clusterstate__pb2
+import routing_pb2 as routing__pb2
 
 
-class ControllerServiceStub(object):
+class RoutingServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -15,23 +16,23 @@ class ControllerServiceStub(object):
             channel: A grpc.Channel.
         """
         self.GetInvocationRoute = channel.unary_unary(
-                '/controller.ControllerService/GetInvocationRoute',
-                request_serializer=controller__pb2.GetInvocationRouteRequest.SerializeToString,
-                response_deserializer=controller__pb2.GetInvocationRouteResponse.FromString,
+                '/controller.RoutingService/GetInvocationRoute',
+                request_serializer=routing__pb2.GetInvocationRouteRequest.SerializeToString,
+                response_deserializer=routing__pb2.GetInvocationRouteResponse.FromString,
                 )
-        self.UpdateClusterState = channel.unary_unary(
-                '/controller.ControllerService/UpdateClusterState',
-                request_serializer=controller__pb2.UpdateClusterStateRequest.SerializeToString,
-                response_deserializer=controller__pb2.UpdateClusterStateResponse.FromString,
+        self.RoutingUpdateClusterState = channel.unary_unary(
+                '/controller.RoutingService/RoutingUpdateClusterState',
+                request_serializer=clusterstate__pb2.UpdateClusterStateRequest.SerializeToString,
+                response_deserializer=clusterstate__pb2.UpdateClusterStateResponse.FromString,
                 )
         self.GetArrivalInfo = channel.unary_unary(
-                '/controller.ControllerService/GetArrivalInfo',
-                request_serializer=controller__pb2.EmptyRequest.SerializeToString,
-                response_deserializer=controller__pb2.GetArrivalInfoResponse.FromString,
+                '/controller.RoutingService/GetArrivalInfo',
+                request_serializer=routing__pb2.EmptyRequest.SerializeToString,
+                response_deserializer=routing__pb2.GetArrivalInfoResponse.FromString,
                 )
 
 
-class ControllerServiceServicer(object):
+class RoutingServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def GetInvocationRoute(self, request, context):
@@ -40,7 +41,7 @@ class ControllerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def UpdateClusterState(self, request, context):
+    def RoutingUpdateClusterState(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -53,31 +54,31 @@ class ControllerServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
 
-def add_ControllerServiceServicer_to_server(servicer, server):
+def add_RoutingServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'GetInvocationRoute': grpc.unary_unary_rpc_method_handler(
                     servicer.GetInvocationRoute,
-                    request_deserializer=controller__pb2.GetInvocationRouteRequest.FromString,
-                    response_serializer=controller__pb2.GetInvocationRouteResponse.SerializeToString,
+                    request_deserializer=routing__pb2.GetInvocationRouteRequest.FromString,
+                    response_serializer=routing__pb2.GetInvocationRouteResponse.SerializeToString,
             ),
-            'UpdateClusterState': grpc.unary_unary_rpc_method_handler(
-                    servicer.UpdateClusterState,
-                    request_deserializer=controller__pb2.UpdateClusterStateRequest.FromString,
-                    response_serializer=controller__pb2.UpdateClusterStateResponse.SerializeToString,
+            'RoutingUpdateClusterState': grpc.unary_unary_rpc_method_handler(
+                    servicer.RoutingUpdateClusterState,
+                    request_deserializer=clusterstate__pb2.UpdateClusterStateRequest.FromString,
+                    response_serializer=clusterstate__pb2.UpdateClusterStateResponse.SerializeToString,
             ),
             'GetArrivalInfo': grpc.unary_unary_rpc_method_handler(
                     servicer.GetArrivalInfo,
-                    request_deserializer=controller__pb2.EmptyRequest.FromString,
-                    response_serializer=controller__pb2.GetArrivalInfoResponse.SerializeToString,
+                    request_deserializer=routing__pb2.EmptyRequest.FromString,
+                    response_serializer=routing__pb2.GetArrivalInfoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'controller.ControllerService', rpc_method_handlers)
+            'controller.RoutingService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
  # This class is part of an EXPERIMENTAL API.
-class ControllerService(object):
+class RoutingService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -91,14 +92,14 @@ class ControllerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/controller.ControllerService/GetInvocationRoute',
-            controller__pb2.GetInvocationRouteRequest.SerializeToString,
-            controller__pb2.GetInvocationRouteResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/controller.RoutingService/GetInvocationRoute',
+            routing__pb2.GetInvocationRouteRequest.SerializeToString,
+            routing__pb2.GetInvocationRouteResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def UpdateClusterState(request,
+    def RoutingUpdateClusterState(request,
             target,
             options=(),
             channel_credentials=None,
@@ -108,9 +109,9 @@ class ControllerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/controller.ControllerService/UpdateClusterState',
-            controller__pb2.UpdateClusterStateRequest.SerializeToString,
-            controller__pb2.UpdateClusterStateResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/controller.RoutingService/RoutingUpdateClusterState',
+            clusterstate__pb2.UpdateClusterStateRequest.SerializeToString,
+            clusterstate__pb2.UpdateClusterStateResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -125,8 +126,8 @@ class ControllerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/controller.ControllerService/GetArrivalInfo',
-            controller__pb2.EmptyRequest.SerializeToString,
-            controller__pb2.GetArrivalInfoResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/controller.RoutingService/GetArrivalInfo',
+            routing__pb2.EmptyRequest.SerializeToString,
+            routing__pb2.GetArrivalInfoResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

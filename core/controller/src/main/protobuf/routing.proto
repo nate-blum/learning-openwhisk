@@ -20,11 +20,11 @@ import "google/protobuf/wrappers.proto";
 
 option java_multiple_files = true;
 option java_package = "org.apache.openwhisk.grpc";
-option java_outer_classname = "ControllerProto";
+option java_outer_classname = "RoutingProto";
 
 package controller;
 
-service ControllerService {
+service RoutingService {
   rpc GetInvocationRoute (GetInvocationRouteRequest) returns (GetInvocationRouteResponse) {}
 
   rpc UpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
