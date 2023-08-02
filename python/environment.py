@@ -3,6 +3,7 @@ from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, F
 from operator import itemgetter
 import grpc
 import numpy as np
+from multiprocessing import Process, Queue
 from concurrent import futures
 from collections import deque
 from itertools import chain
@@ -11,13 +12,14 @@ from invoker_client import invoker_pb2 as invoker_types
 from invoker_client import invoker_pb2_grpc as invoker_service
 from controller_server.server import ControllerService
 from controller_server import controller_pb2 as controller_types
-from  controller_server import controller_pb2_grpc as controller_service
+from controller_server import controller_pb2_grpc as controller_service
 
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
 from reward import compute_reward_using_overall_stat
 
 import training_configs  # training config
 import config  # cluster environment config
+from load_balance import start_rpc_routing_server_process
 
 
 class Core:
@@ -104,7 +106,7 @@ class Monitor:
 
 class Cluster:
     SERVER_RPC_THREAD_COUNT = 4
-    RPC_SERVER_PORT = "" # RPC server port
+    RPC_SERVER_PORT = ""  # RPC server port
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
     ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
     TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
@@ -126,9 +128,10 @@ class Cluster:
         self.func_2_busyinfo: Dict[int, Dict[Invoker, Set[str]]] = {}
         self.func_2_warminginfo: Dict[int, Dict[Invoker, Set[str]]] = {}
 
-        self.func_2_warminfoSorted:Dict[int, List[Tuple[Invoker,int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
-        self.func_2_busyinfoSorted:Dict[int, List[Tuple[Invoker,int]]] = {}
-        self.func_2_warminginfoSorted:Dict[int, List[Tuple[Invoker,int]]] = {}
+        self.func_2_warminfoSorted: Dict[int, List[Tuple[
+            Invoker, int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
+        self.func_2_busyinfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
+        self.func_2_warminginfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
 
         # FIFO
         self.most_recent_killed_container_cache: Deque[str] = deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
@@ -147,41 +150,30 @@ class Cluster:
             self.funcname_2_id[name] = func_id
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
-        self.rpc_server = self._set_up_rpc_server()
-    def _set_up_rpc_server(self):
-        rpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=self.SERVER_RPC_THREAD_COUNT))
-        controller_service.add_ControllerServiceServicer_to_server(ControllerService(), rpc_server)
-        rpc_server.add_insecure_port( f"0.0.0.0:{self.RPC_SERVER_PORT}")
-        rpc_server.start() # non blocking
-        return rpc_server
+        self.process_q = Queue()
+        #-------------------Start Load Balancer process and the rpc server-----------------------------
+        self.load_balancer_process = Process(target=start_rpc_routing_server_process,
+                                             args=(self.process_q, self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT))
+        self.load_balancer_process.start()
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
 
-    # find a proper invoker and try to trigger a cold start
-    def _find_proper_invoker_cold_start(self, func_id) -> Optional[int]:
-        pass
-
-    # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
-    def route_invocation(self, func_id) -> Union[Tuple[Invoker,int], RoutingResult]:
-        warminfo_sorted = self.func_2_warminfoSorted[func_id]
-        if warminfo_sorted:
-            return warminfo_sorted[0]  # invoker with the maximum of number of warm container for the function
-        busyinfo_sorted = self.func_2_busyinfoSorted[func_id]
-        if busyinfo_sorted:
-            return busyinfo_sorted[0]
-        warminginfo_sorted = self.func_2_warminginfoSorted[func_id]
-        if warminginfo_sorted:
-            return warminginfo_sorted[0]
-        # no warm, busy, warming, just create one (cold start)
-        find_res = self._find_proper_invoker_cold_start(func_id)
-        if find_res is None:
-            return RoutingResult.DISCARD
-
-    def _reset_openwhisk_cluster(self):
-        # @TODO
-        # reset the openwhisk cluster to an initial state
-        pass
+    # # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
+    # def route_invocation(self, func_id) -> Union[Tuple[Invoker, int], RoutingResult]:
+    #     warminfo_sorted = self.func_2_warminfoSorted[func_id]
+    #     if warminfo_sorted:
+    #         return warminfo_sorted[0]  # invoker with the maximum of number of warm container for the function
+    #     busyinfo_sorted = self.func_2_busyinfoSorted[func_id]
+    #     if busyinfo_sorted:
+    #         return busyinfo_sorted[0]
+    #     warminginfo_sorted = self.func_2_warminginfoSorted[func_id]
+    #     if warminginfo_sorted:
+    #         return warminginfo_sorted[0]
+    #     # no warm, busy, warming, just create one (cold start)
+    #     find_res = self._find_proper_invoker_cold_start(func_id)
+    #     if find_res is None:
+    #         return RoutingResult.DISCARD
 
     def reset(self, seed=None, options=None):
         pass
@@ -283,7 +275,7 @@ class Cluster:
                                                         server_power_specs=self.SERVER_POWER_SPECS,
                                                         latency_factor=self.RATIO_BASED_LATENCY_FACTOR)
         state = self.get_obs()
-        return state, reward_dict, False,False, self.state_info
+        return state, reward_dict, False, False, self.state_info
 
     # get the features of All function so that to choose the active working functions.
     def select_from_all_state(self, time_window_size_millis: int, coeff: float, bucket_millis: int) -> None:
@@ -292,7 +284,7 @@ class Cluster:
     def get_sla_latency_for_reward(self):
         pass
 
-    def compute_utilization(self)->Dict:
+    def compute_utilization(self) -> Dict:
         pass
 
     def get_obs(self):
@@ -306,9 +298,6 @@ class Cluster:
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.func_id_counter += 1  # increase the function id counter
         return func_id
-
-    def delete_container(self, func_id):
-        pass
 
     # ----------for collecting runtime info---------
     def get_avg_busy_container_utilization_per_type(self, func_ids: List):
