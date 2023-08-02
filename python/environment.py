@@ -159,30 +159,21 @@ class Cluster:
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
 
-    # find a proper invoker and try to trigger a cold start
-    def _find_proper_invoker_cold_start(self, func_id) -> Optional[int]:
-        pass
-
-    # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
-    def route_invocation(self, func_id) -> Union[Tuple[Invoker, int], RoutingResult]:
-        warminfo_sorted = self.func_2_warminfoSorted[func_id]
-        if warminfo_sorted:
-            return warminfo_sorted[0]  # invoker with the maximum of number of warm container for the function
-        busyinfo_sorted = self.func_2_busyinfoSorted[func_id]
-        if busyinfo_sorted:
-            return busyinfo_sorted[0]
-        warminginfo_sorted = self.func_2_warminginfoSorted[func_id]
-        if warminginfo_sorted:
-            return warminginfo_sorted[0]
-        # no warm, busy, warming, just create one (cold start)
-        find_res = self._find_proper_invoker_cold_start(func_id)
-        if find_res is None:
-            return RoutingResult.DISCARD
-
-    def _reset_openwhisk_cluster(self):
-        # @TODO
-        # reset the openwhisk cluster to an initial state
-        pass
+    # # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
+    # def route_invocation(self, func_id) -> Union[Tuple[Invoker, int], RoutingResult]:
+    #     warminfo_sorted = self.func_2_warminfoSorted[func_id]
+    #     if warminfo_sorted:
+    #         return warminfo_sorted[0]  # invoker with the maximum of number of warm container for the function
+    #     busyinfo_sorted = self.func_2_busyinfoSorted[func_id]
+    #     if busyinfo_sorted:
+    #         return busyinfo_sorted[0]
+    #     warminginfo_sorted = self.func_2_warminginfoSorted[func_id]
+    #     if warminginfo_sorted:
+    #         return warminginfo_sorted[0]
+    #     # no warm, busy, warming, just create one (cold start)
+    #     find_res = self._find_proper_invoker_cold_start(func_id)
+    #     if find_res is None:
+    #         return RoutingResult.DISCARD
 
     def reset(self, seed=None, options=None):
         pass
@@ -307,9 +298,6 @@ class Cluster:
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.func_id_counter += 1  # increase the function id counter
         return func_id
-
-    def delete_container(self, func_id):
-        pass
 
     # ----------for collecting runtime info---------
     def get_avg_busy_container_utilization_per_type(self, func_ids: List):
