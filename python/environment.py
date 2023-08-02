@@ -303,3 +303,6 @@ class Cluster:
     def get_avg_busy_container_utilization_per_type(self, func_ids: List):
         # get avg container utilization per type for each function
         pass
+
+if __name__ == "__main__":
+    pass
