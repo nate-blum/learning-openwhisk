@@ -5,14 +5,12 @@ import grpc
 import numpy as np
 from multiprocessing import Process, Queue
 from concurrent import futures
+from threading import Lock
 from collections import deque
 from itertools import chain
 from bisect import bisect
 from invoker_client import invoker_pb2 as invoker_types
 from invoker_client import invoker_pb2_grpc as invoker_service
-from controller_server.server import ControllerService
-from controller_server import controller_pb2 as controller_types
-from controller_server import controller_pb2_grpc as controller_service
 
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
 from reward import compute_reward_using_overall_stat
@@ -115,23 +113,28 @@ class Cluster:
     MOST_RECENT_KILLED_CONTAINER_SET_LIMIT = 10
     SERVER_POWER_SPECS = config.server_power_specs
     RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
+    DEFAULT_SERVER_TYPE = config.default_svr_type
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
 
         self.func_id_counter = 0
-        self.id_2_funcs: Dict[int, Func] = {}  # funcid: func_name/action
+        self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
+        self.intId_2_funcStrName: Dict[int, str] = {}
         self.id_2_invoker: Dict[int, Invoker] = {}
         self.type_2_invoker: Dict[str, Set[Invoker]] = {}
         self.id_2_container: Dict[str, Container] = {}
 
-        self.func_2_warminfo: Dict[int, Dict[Invoker, Set[str]]] = {}  # {func_id: {invoker: SetOfContainer}}
-        self.func_2_busyinfo: Dict[int, Dict[Invoker, Set[str]]] = {}
-        self.func_2_warminginfo: Dict[int, Dict[Invoker, Set[str]]] = {}
+        self.cluster_state_lock = Lock()
+        self.func_2_warminfo: Dict[str, Dict[Invoker, Set[str]]] = {}  # {func_id: {invoker: SetOfContainer}}
+        self.func_2_busyinfo: Dict[str, Dict[Invoker, Set[str]]] = {}
+        self.func_2_warminginfo: Dict[str, Dict[Invoker, Set[str]]] = {}
 
         self.func_2_warminfoSorted: Dict[int, List[Tuple[
             Invoker, int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
         self.func_2_busyinfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
         self.func_2_warminginfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
+
+        self.invoker_2_freemem = {}
 
         # FIFO
         self.most_recent_killed_container_cache: Deque[str] = deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
@@ -151,13 +154,17 @@ class Cluster:
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
         self.process_q = Queue()
-        #-------------------Start Load Balancer process and the rpc server-----------------------------
+        # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
-                                             args=(self.process_q, self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT))
+                                             args=(self.process_q, self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
+                                                   self.DEFAULT_SERVER_TYPE))
         self.load_balancer_process.start()
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
+
+    def _initialize_dict_(self, ):
+        pass
 
     # # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
     # def route_invocation(self, func_id) -> Union[Tuple[Invoker, int], RoutingResult]:
@@ -209,10 +216,10 @@ class Cluster:
         index_min = min(range(len(score_lst)), key=score_lst.__getitem__)
         return candidate_lst[index_min]
 
-    def delete_container_multiple_pinning(self, func_id: int, type: str) -> Optional[str]:
-        lst_warmset: List[Set[str]] = [st for invk, st in self.func_2_warminfo[func_id].items() if invk.type == type]
-        lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id].items() if invk.type == type]
-        lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id].items() if invk.type == type]
+    def delete_container_multiple_pinning(self, func_id_str: str, type: str) -> Optional[str]:
+        lst_warmset: List[Set[str]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if invk.type == type]
+        lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
+        lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
         lst_warm: List[str] = [container for s in lst_warmset for container in s]  # flatten the list
         lst_busyset = [container for s in lst_busyset for container in s]
         lst_warmingset = [container for s in lst_warmingset for container in s]
@@ -227,7 +234,7 @@ class Cluster:
                 if cand not in self.most_recent_killed_container_cache:
                     self.most_recent_killed_container_cache.append(cand)
                     host_invoker: Invoker = self.id_2_container[cand].invoker
-                    host_invoker.rpc_delete_container(cand, self.id_2_funcs[func_id].name)
+                    host_invoker.rpc_delete_container(cand, self.strId_2_funcs[func_id_str].name)
                     logging.info("Deleting container {} on invoker {}".format(cand, host_invoker.id))
                     return cand  # make sure only delete one
         return None  #
@@ -261,9 +268,9 @@ class Cluster:
         # mapped_action: {id, Action}
         for funcid, action in mapped_action.items():
             if action.container_delta > 0:  # add container
-                self.add_container_with_multiple_pinning(action, self.id_2_funcs[funcid])
+                self.add_container_with_multiple_pinning(action, self.strId_2_funcs[self.intId_2_funcStrName[funcid]])
             elif action.container_delta < 0:
-                self.delete_container_multiple_pinning(func_id=funcid, type=action.type)
+                self.delete_container_multiple_pinning(func_id_str=self.intId_2_funcStrName[funcid], type=action.type)
 
     def step(self, action: np.ndarray):
         mapped_action: Dict[int, Action] = self._map_action(action)
@@ -293,7 +300,7 @@ class Cluster:
     def register_func(self, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
         # TODO, register into the openwhisk system
         func_id = self.func_id_counter
-        self.id_2_funcs[func_id] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
+        self.strId_2_funcs[name] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
                                         cpu_req=cpu_req,
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.func_id_counter += 1  # increase the function id counter
@@ -303,6 +310,7 @@ class Cluster:
     def get_avg_busy_container_utilization_per_type(self, func_ids: List):
         # get avg container utilization per type for each function
         pass
+
 
 if __name__ == "__main__":
     pass
