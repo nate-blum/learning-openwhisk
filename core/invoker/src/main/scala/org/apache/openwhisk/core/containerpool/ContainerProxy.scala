@@ -566,7 +566,7 @@ class ContainerProxy(factory: (TransactionId,
 
     // pause grace timed out
     case Event(StateTimeout, data: WarmedData) =>
-      logging.info(this, "reached pause timeout")
+      logging.info(this, s"reached pause timeout, ${pauseGrace}")
 //      data.container.suspend()(TransactionId.invokerNanny).map(_ => ContainerPaused).pipeTo(self)
 //      goto(Pausing)
       stay
