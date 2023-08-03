@@ -5,8 +5,9 @@ server_power_specs = {
     'xe': {'static': 20, 'peak': 130, 'num_core': 8}
 }
 
-cluster_spec_dict = {"xs": {"count": 2, "mem_capacity": 20000, "num_cores": 16, "per_core_dvfs": 1, "max_freq": 3000,
-                            "min_freq": 2000, "desired_freq": 3000},
+cluster_spec_dict = {"xs": [{"count": 2, "mem_capacity": 20000, "num_cores": 16, "per_core_dvfs": 1, "max_freq": 3000,
+                             "min_freq": 2000, "desired_freq": 3000, "host": f"panic-cloud-xs-{i:02d}.cs.rutgers.edu",
+                             "max_pinned_container_per_core": 2} for i in range(2)],
                      "xe": {"count": 2, "mem_capacity": 20000, "num_cores": 8, "per_core_dvfs": 1, "max_freq": 3000,
                             "min_freq": 2000, "desired_freq": 3000}
                      }
@@ -49,11 +50,11 @@ func_spec_dict = {
               'container_start_latency': 1000, 'start_up_cpu_ratio': 1, 'invoker_2_duration': {'xs': 800, 'xe': 500}},
 }
 
-#NOTE, this must match the get_obs method in the environment
+# NOTE, this must match the get_obs method in the environment
 input_space_spec = {
     'func_state_dim': 5 + 5 * len(cluster_spec_dict),
     'cluster_state_dim': 1 * len(cluster_spec_dict),
-    'n_func': 2 # active function
+    'n_func': 2  # active function
 }
 
 for k in server_power_specs.keys():

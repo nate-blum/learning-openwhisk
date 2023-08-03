@@ -5,8 +5,6 @@ from typing import Dict, List, Tuple
 from collections import deque, defaultdict
 import grpc
 from concurrent import futures
-from multiprocessing import Process
-from controller_server.server import ControllerService
 from controller_server import routing_pb2
 from controller_server import routing_pb2_grpc
 from time import time_ns
@@ -30,9 +28,11 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         # self.func_2_busyinfoSorted: Dict[int, List[Tuple[int, int]]] = {}
         # self.func_2_warminginfoSorted: Dict[int, List[Tuple[int, int]]] = {}
 
+
         self.func_2_containerSumList: Dict[str, List[int]] = {}
         self.func_2_invokerId: Dict[str, List[int]] = {}  # pair with the above
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
+        self.lock_routing_info = Lock()
         self.lock_1sec = Lock()
         self.lock_3sec = Lock()
         self.process_queue = queue
@@ -41,14 +41,17 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                                                        args=(self.TIMER_INTERVAL_SEC,), daemon=True)
         self.timer_update_arrival_info_thread.start()
 
-    def _select_invoker_to_dipatch(self, func_id):
+    def _select_invoker_to_dispatch(self, func_id):
         # NOTE,Current heuristic: route to a invoker with the probability proportional to how many container
-        #  the invoker has (sum of warm, warming, busy) this is different than the simulator.
+        #  the invoker has (sum of warm, warming, busy) this is different than the simulator. Cold start
+        #  heuristic: 1) choose the default server (fast startup) and 2) choose one with least number of normalized
+        #  container 3) rely on the Openwhisk to start a container
         try:
-            lst_count = self.func_2_containerSumList[func_id]
-            lst_invokerId = self.func_2_invokerId[func_id]
-            total = self.func_2_containerCountSum[func_id]
-            return choice(lst_invokerId, p=np.array(lst_count) / total)
+            with self.lock_routing_info:
+                lst_count = self.func_2_containerSumList[func_id]
+                lst_invokerId = self.func_2_invokerId[func_id]
+                total = self.func_2_containerCountSum[func_id]
+                return choice(lst_invokerId, p=np.array(lst_count) / total)
         except KeyError:  # no corresponding container, cold start
             # TODO cold start heuristic
             return 0
@@ -60,10 +63,14 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             self.func_2_arrivalQueue1Sec[func_id].append(t)  # NOTE, should be thread-safe
         with self.lock_3sec:
             self.func_2_arrivalQueue3Sec[func_id].append(t)
-        res = self._select_invoker_to_dipatch(func_id)
+        res = self._select_invoker_to_dispatch(func_id)
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
-    def NotifyClusterInfo(self, request, context):
-        #TODO
+    def NotifyClusterInfo(self, request:routing_pb2.NotifyClusterInfoRequest, context):
+        with self.lock_routing_info:
+            for func_id_str, container_counter in request.func_2_ContainerCounter.items():
+                self.func_2_containerSumList[func_id_str] = container_counter.count
+                self.func_2_invokerId[func_id_str] = container_counter.invokerId
+                self.func_2_containerCountSum[func_id_str] = sum(container_counter.count)
         return routing_pb2.NotifyClusterInfoResponse()
 
     def _threaded_update_arrival_queue(self, interval_sec):

@@ -34,11 +34,11 @@ class Core:
 class Invoker:
     def __init__(self, id, host, type, mem_capacity, num_cores, core_spec_dict: Dict[int, Dict],
                  max_pinned_container_per_core: int) -> None:
-        self.id = id
-        self.hostname = host
-        self.type = type
-        self.mem_capacity = mem_capacity
-        self.free_mem = mem_capacity
+        self.id: int = id
+        self.hostname: str = host
+        self.type: str = type
+        self.mem_capacity: int = mem_capacity
+        self.free_mem: int = mem_capacity
         self.num_cores = num_cores
         self.num_warm_container = 0
         self.num_busy_container = 0
@@ -78,6 +78,10 @@ class Invoker:
         core_idxs.sort(key=lambda idx: self.id_2_core[idx].num_pinned_container)  # ascending order
         return core_idxs
 
+    def reset_core_pinning_count(self):
+        for core in self.id_2_core.values():
+            core.num_pinned_container = 0
+
 
 class Container:
     def __init__(self, str_id: str, pinned_core: List[Core], invoker: Invoker):
@@ -96,19 +100,19 @@ class Func:
         self.invoker_2_referenceExecTime = invoker_2_referenceExecTime
 
 
-# Monitor collects aggregated info for agent to make decision
-class Monitor:
-    def __init__(self):
-        self.func_2_arrival_queue: Dict[int, Deque] = {}
-        self.func_2_slaLaency_for_reward: Dict[int, LatencyInfo] = {}
-        self.func_2_nColdStart = {}
+# # Monitor collects aggregated info for agent to make decision
+# class Monitor:
+#     def __init__(self):
+#         self.func_2_arrival_queue: Dict[int, Deque] = {}
+#         self.func_2_slaLaency_for_reward: Dict[int, LatencyInfo] = {}
+#         self.func_2_nColdStart = {}
 
 
 class Cluster:
     SERVER_RPC_THREAD_COUNT = 4  # for routing
     SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 1  # 1 should be grood enough to handle, as only one rpc at a time
     RPC_SERVER_PORT = ""  # RPC server port, routing server
-    RPC_SERVER_PORT_CLUSTER_UPDATE = "" #RPC server port, cluster state update
+    RPC_SERVER_PORT_CLUSTER_UPDATE = ""  # RPC server port, cluster state update
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
     ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
     TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
@@ -124,27 +128,28 @@ class Cluster:
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
+
         self.id_2_invoker: Dict[int, Invoker] = {}
         self.type_2_invoker: Dict[str, Set[Invoker]] = {}
-        self.id_2_container: Dict[str, Container] = {}
+        # self.id_2_container: Dict[str, Container] = {}
 
         self.cluster_state_lock = Lock()
-        self.func_2_warminfo: Dict[str, Dict[Invoker, Set[str]]] = {}  # {func_id: {invoker: SetOfContainer}}
-        self.func_2_busyinfo: Dict[str, Dict[Invoker, Set[str]]] = {}
-        self.func_2_warminginfo: Dict[str, Dict[Invoker, Set[str]]] = {}
+        self.func_2_warminfo: Dict[
+            str, Dict[Invoker, frozenset[Container]]] = {}  # {func_id: {invoker: SetOfContainer}}
+        self.func_2_busyinfo: Dict[str, Dict[Invoker, frozenset[Container]]] = {}
+        self.func_2_warminginfo: Dict[str, Dict[Invoker, frozenset[Container]]] = {}
 
-        self.func_2_warminfoSorted: Dict[int, List[Tuple[
-            Invoker, int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
-        self.func_2_busyinfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
-        self.func_2_warminginfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
+        # self.func_2_warminfoSorted: Dict[int, List[Tuple[
+        #     Invoker, int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
+        # self.func_2_busyinfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
+        # self.func_2_warminginfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
 
-        self.invoker_2_freemem = {}
-
-        # FIFO
-        self.most_recent_killed_container_cache: Deque[str] = deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
+        # FIFO, must use dict as container might have the same id on different invoker (docker runtime)
+        self.most_recent_killed_container_cache: dict[int, Deque[str]] = None
 
         self.cluster_spec_dict = cluster_spec_dict
         self.server_type_lst = list(cluster_spec_dict.keys())
+        self.server_types = []
         self.func_spec_dict = func_spec_dict
         self.all_func_ids = []
         self.id_2_funcname = {}
@@ -177,31 +182,55 @@ class Cluster:
             reflection.SERVICE_NAME, self.cluster_info_update_server)
         self.cluster_info_update_server.add_insecure_port(f"[::]:{self.RPC_SERVER_PORT_CLUSTER_UPDATE}")
         self.cluster_info_update_server.start()
-
-
-
+        self._initialization()
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
 
-    def _initialize_dict_(self, ):
-        pass
+    def _initialization(self):
+        # instantiate Invoker instances list, the invoker instance will initialize the Core object
+        invoker_id_counter = 0
+        for _type, spec_map_lst in self.cluster_spec_dict:
+            self.server_types.append(_type)
+            for spec in spec_map_lst:
+                self.id_2_invoker[invoker_id_counter] = Invoker(invoker_id_counter, spec['host'], _type,
+                                                                spec['mem_capacity'], spec['num_cores'],
+                                                                {i: {'id': i, 'max_freq': spec['max_freq'],
+                                                                     'min_freq': spec['min_freq'],
+                                                                     'desired_freq': spec['desired_freq']} for i in
+                                                                 range(spec['num_cores'])},
+                                                                spec['max_pinned_container_per_core']
+                                                                )
+                if _type not in self.type_2_invoker:
+                    self.type_2_invoker[_type] = set()
+                self.type_2_invoker[_type].add(self.id_2_invoker[invoker_id_counter])
+                invoker_id_counter += 1
+        self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
+                                                   for invoker_id in self.id_2_invoker.keys()}
 
-    # # NOTE,What is different from the simulator: the routing heuristic might not always have the most up-to-date cluster view
-    # def route_invocation(self, func_id) -> Union[Tuple[Invoker, int], RoutingResult]:
-    #     warminfo_sorted = self.func_2_warminfoSorted[func_id]
-    #     if warminfo_sorted:
-    #         return warminfo_sorted[0]  # invoker with the maximum of number of warm container for the function
-    #     busyinfo_sorted = self.func_2_busyinfoSorted[func_id]
-    #     if busyinfo_sorted:
-    #         return busyinfo_sorted[0]
-    #     warminginfo_sorted = self.func_2_warminginfoSorted[func_id]
-    #     if warminginfo_sorted:
-    #         return warminginfo_sorted[0]
-    #     # no warm, busy, warming, just create one (cold start)
-    #     find_res = self._find_proper_invoker_cold_start(func_id)
-    #     if find_res is None:
-    #         return RoutingResult.DISCARD
+    def _update_invoker_state(self):
+        # update the invoker state after controller rpc update
+        for invoker in self.id_2_invoker.values():
+            warm_sum:int = 0
+            busy_sum:int = 0
+            warming_sum:int = 0
+            # loop all functions
+            for invk_2_container_set in self.func_2_busyinfo.values():
+                busy_sum += len(invk_2_container_set[invoker])
+            for invk_2_container_set in self.func_2_warminfo.values():
+                warm_sum += len(invk_2_container_set[invoker])
+            for invk_2_container_set in self.func_2_warminginfo.values():
+                warming_sum += len(invk_2_container_set[invoker])
+            invoker.num_busy_container =  busy_sum
+            invoker.num_warm_container = warm_sum
+            invoker.num_warming_container = warming_sum
+
+    # def _reset_core_pinning(self):
+    #     for invoker in self.id_2_invoker.values():
+    #         for core in invoker.id_2_core.values():
+    #             core.num_pinned_container = 0
+
+
 
     def reset(self, seed=None, options=None):
         pass
@@ -238,27 +267,30 @@ class Cluster:
         return candidate_lst[index_min]
 
     def delete_container_multiple_pinning(self, func_id_str: str, type: str) -> Optional[str]:
-        lst_warmset: List[Set[str]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
-                                       invk.type == type]
+        lst_warmset: List[frozenset[Container]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
+                                                   invk.type == type]
         lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
         lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
-        lst_warm: List[str] = [container for s in lst_warmset for container in s]  # flatten the list
+        lst_warm: List[Container] = [container for s in lst_warmset for container in s]  # flatten the list
         lst_busyset = [container for s in lst_busyset for container in s]
         lst_warmingset = [container for s in lst_warmingset for container in s]
-        candidate_lst: List[str] = list(
+        candidate_lst: List[Container] = list(
             chain.from_iterable([lst_warm, lst_warmingset, lst_busyset]))  # flatten list of list
         if candidate_lst:
             self.actionRealizeCounter.delete_success += 1
             # find the container that has the maximum number of sibling containers that pinns to its first core.
-            candidate_lst.sort(key=lambda x: self.id_2_container[x].pinned_core[0].num_pinned_container,
+            candidate_lst.sort(key=lambda x: x.pinned_core[0].num_pinned_container,
                                reverse=True)  # stable sort
             for cand in candidate_lst:
-                if cand not in self.most_recent_killed_container_cache:
-                    self.most_recent_killed_container_cache.append(cand)
-                    host_invoker: Invoker = self.id_2_container[cand].invoker
-                    host_invoker.rpc_delete_container(cand, self.strId_2_funcs[func_id_str].name)
+                invoker_id = cand.invoker.id
+                if cand not in self.most_recent_killed_container_cache[invoker_id]:
+                    # NOTE, (1) there is a small chance that the container id is reuse (2) here we must use container
+                    # str id instead of container object since the different object might represent the same physical container in this implementation
+                    self.most_recent_killed_container_cache[invoker_id].append(cand.id)
+                    host_invoker: Invoker = cand.invoker
+                    host_invoker.rpc_delete_container(cand.id, self.strId_2_funcs[func_id_str].name)
                     logging.info("Deleting container {} on invoker {}".format(cand, host_invoker.id))
-                    return cand  # make sure only delete one
+                    return cand.id  # make sure only delete one
         return None  #
 
     def add_container_with_multiple_pinning(self, action: Action, func: Func):
@@ -316,20 +348,24 @@ class Cluster:
     def compute_utilization(self) -> Dict:
         pass
 
-    def _rpc_get_arrival_info(self)->tuple[dict[int,int],dict[int,int]]:
+    def _rpc_get_arrival_info(self) -> tuple[dict[int, int], dict[int, int]]:
         # get the arrival info from a rpc call to the routing rpc server
-        response:routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
+        response: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
         return response.query_count_1s, response.query_count_3s
 
     def get_obs(self):
         pass
 
     def register_func(self, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
-        # TODO, register into the openwhisk system
+        # TODO, register into the openwhisk system, via openwhisk CLI
         func_id = self.func_id_counter
         self.strId_2_funcs[name] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
                                         cpu_req=cpu_req,
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
+        self.intId_2_funcStrName[func_id] = name
+        self.func_2_warminfo[name] = {self.id_2_invoker[i]: set() for i in self.id_2_invoker.keys()}
+        self.func_2_busyinfo[name] = {self.id_2_invoker[i]: set() for i in self.id_2_invoker.keys()}
+        self.func_2_warminginfo[name] = {self.id_2_invoker[i]: set() for i in self.id_2_invoker.keys()}
         self.func_id_counter += 1  # increase the function id counter
         return func_id
 
