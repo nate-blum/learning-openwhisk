@@ -218,7 +218,7 @@ invoker:
   # Specify if it is allowed to deploy more than 1 invoker on a single machine.
   allowMultipleInstances: "{{ invoker_allow_multiple_instances | default(false) }}"
   # Specify if it should use docker-runc or docker to pause/unpause containers
-  useRunc: true
+  useRunc: false
   docker:
     become: "{{ invoker_docker_become | default(false) }}"
     runcdir: "{{ invoker_runcdir | default('/run/docker/runtime-runc/moby') }}"
