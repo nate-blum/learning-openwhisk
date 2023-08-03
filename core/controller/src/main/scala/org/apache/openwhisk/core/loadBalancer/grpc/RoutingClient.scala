@@ -21,7 +21,7 @@ class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSyst
   }
 
   def executeClusterStateUpdateRouting(state: InvokerClusterState): UpdateClusterStateResponse = {
-    logging.info(this, "executing routing request")
+    logging.info(this, "executing clusterstate request")
     val request: Future[UpdateClusterStateResponse] = client.routingUpdateClusterState(UpdateClusterStateRequest(Some(state)))
     Await.result(request, 10.seconds)
   }

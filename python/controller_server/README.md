@@ -5,4 +5,4 @@ must run:
 python3 -m grpc_tools.protoc --proto_path=. --python_out=. --grpc_python_out=. *.proto
 to generate python proto files
 
-python3 server.py -p 3100
+python3 server.py -p 50051

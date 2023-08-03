@@ -98,8 +98,8 @@ controller:
   blackboxFraction: "{{ controller_blackbox_fraction | default(__controller_blackbox_fraction) }}"
   # flag to decide whether to send every single state update request to the agent
   # regardless of whether anything has changed
-  sendAllUpdateRequests: false
-  agentIp: "172.17.0.1"
+  sendAllUpdateRequests: true
+  agentIp: "192.168.100.2"
   routingPort: 50051
   clusterStatePort: 50052
   timeoutFactor: "{{ controller_timeout_factor | default(2) }}"
@@ -218,7 +218,7 @@ invoker:
   # Specify if it is allowed to deploy more than 1 invoker on a single machine.
   allowMultipleInstances: "{{ invoker_allow_multiple_instances | default(false) }}"
   # Specify if it should use docker-runc or docker to pause/unpause containers
-  useRunc: "{{ invoker_use_runc | default(true) }}"
+  useRunc: false
   docker:
     become: "{{ invoker_docker_become | default(false) }}"
     runcdir: "{{ invoker_runcdir | default('/run/docker/runtime-runc/moby') }}"
