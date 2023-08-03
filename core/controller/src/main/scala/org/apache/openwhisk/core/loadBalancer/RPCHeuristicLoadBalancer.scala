@@ -35,7 +35,7 @@ import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeLong
 import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
-import org.apache.openwhisk.core.loadBalancer.grpc.ControllerClient
+import org.apache.openwhisk.core.loadBalancer.grpc.RoutingClient
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.spi.SpiLoader
 
@@ -64,7 +64,7 @@ class RPCHeuristicLoadBalancer(
     None
   }
 
-  private val client: ControllerClient = new ControllerClient()
+  private val client: RoutingClient = new RoutingClient(lbConfig)
 
   override protected def emitMetrics() = {
     super.emitMetrics()
@@ -368,5 +368,8 @@ case class RPCHeuristicLoadBalancerState(
  */
 case class RPCHeuristicLoadBalancerConfig(managedFraction: Double,
                                           sendAllUpdateRequests: Boolean,
+                                          agentIp: String,
+                                          routingPort: Int,
+                                          clusterStatePort: Int,
                                           timeoutFactor: Int,
                                           timeoutAddon: FiniteDuration)

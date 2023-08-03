@@ -15,14 +15,15 @@
  * limitations under the License.
  */
 
-package org.apache.openwhisk.core.invoker.grpc;
+package org.apache.openwhisk.core.invoker.grpc
 
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
-import org.apache.openwhisk.grpc.{InvokerService, NewWarmedContainerRequest, NewWarmedContainerResponse, DeleteContainerRequest, DeleteContainerResponse, SetAllowOpenWhiskToFreeMemoryRequest, SetAllowOpenWhiskToFreeMemoryResponse}
+import org.apache.openwhisk.grpc.{DeleteContainerWithIdRequest, DeleteRandomContainerRequest, InvokerService, NewWarmedContainerRequest, ResetInvokerRequest, SetAllowOpenWhiskToFreeMemoryRequest, SuccessResponse}
 
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.{ExecutionContextExecutor, Future};
+
 
 class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
@@ -31,19 +32,29 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
     invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(event)
   }
 
-  override def newWarmedContainer(request: NewWarmedContainerRequest): Future[NewWarmedContainerResponse] = {
+  override def newWarmedContainer(request: NewWarmedContainerRequest): Future[SuccessResponse] = {
     handleEvent(NewWarmedContainerEvent(request.actionName, "guest", request.params.map { case (k, v) => (k, Set(v))}))
-    Future.successful(NewWarmedContainerResponse(true))
+    Future.successful(SuccessResponse(true))
   }
 
-  override def deleteContainer(request: DeleteContainerRequest): Future[DeleteContainerResponse] = {
-    handleEvent(DeleteContainerEvent(request.actionName, "guest"))
-    Future.successful(DeleteContainerResponse(true))
+  override def deleteRandomContainer(request: DeleteRandomContainerRequest): Future[SuccessResponse] = {
+    handleEvent(DeleteRandomContainerEvent(request.actionName, "guest"))
+    Future.successful(SuccessResponse(true))
   }
 
-  override def setAllowOpenWhiskToFreeMemory(request: SetAllowOpenWhiskToFreeMemoryRequest): Future[SetAllowOpenWhiskToFreeMemoryResponse] = {
+  override def deleteContainerWithId(request: DeleteContainerWithIdRequest): Future[SuccessResponse] = {
+    handleEvent(DeleteContainerWithIdEvent(request.containerId))
+    Future.successful(SuccessResponse(true))
+  }
+
+  override def setAllowOpenWhiskToFreeMemory(request: SetAllowOpenWhiskToFreeMemoryRequest): Future[SuccessResponse] = {
     handleEvent(SetAllowOpenWhiskToFreeMemoryEvent(request.setValue))
-    Future.successful(SetAllowOpenWhiskToFreeMemoryResponse(true))
+    Future.successful(SuccessResponse(true))
+  }
+
+  override def resetInvoker(request: ResetInvokerRequest): Future[SuccessResponse] = {
+    handleEvent(ResetInvokerEvent())
+    Future.successful(SuccessResponse(true))
   }
 }
 
@@ -55,5 +66,7 @@ object InvokerServiceImpl {
 // new warmed container event - received by ContainerPool
 trait InvokerRPCEvent
 case class NewWarmedContainerEvent(actionName: String, namespace: String, params: Map[String, Set[String]]) extends InvokerRPCEvent
-case class DeleteContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
+case class DeleteRandomContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
+case class DeleteContainerWithIdEvent(containerId: String) extends InvokerRPCEvent
 case class SetAllowOpenWhiskToFreeMemoryEvent(setValue: Boolean) extends InvokerRPCEvent
+case class ResetInvokerEvent() extends InvokerRPCEvent

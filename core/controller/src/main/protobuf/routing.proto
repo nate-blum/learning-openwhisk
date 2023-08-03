@@ -16,18 +16,19 @@
  */
 
 syntax = "proto3";
+
+package controller;
 import "google/protobuf/wrappers.proto";
+import "clusterstate.proto";
 
 option java_multiple_files = true;
 option java_package = "org.apache.openwhisk.grpc";
 option java_outer_classname = "RoutingProto";
 
-package controller;
-
 service RoutingService {
   rpc GetInvocationRoute (GetInvocationRouteRequest) returns (GetInvocationRouteResponse) {}
 
-  rpc UpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
+  rpc RoutingUpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
 
   rpc GetArrivalInfo (EmptyRequest) returns (GetArrivalInfoResponse) {}
 }
@@ -46,43 +47,3 @@ message GetInvocationRouteRequest {
 message GetInvocationRouteResponse {
   int32 invokerInstanceId = 1;
 }
-
-// map of invoker state to its action states by the id of the invoker
-// for instance, 1 -> (ActionStatePerInvoker object), 2 -> (ActionStatePerInvoker object)
-message InvokerClusterState {
-  map<int32, ActionStatePerInvoker> actionStatePerInvoker = 1;
-}
-
-// map of action to its container states by the name of the action
-// for instance, hello1 -> (ActionState object), panic-cloud-xs-02 -> (ContainerStateCounts object)
-message ActionStatePerInvoker {
-  map<string, ActionState> actionStates = 1;
-  int64 freeMemoryMB = 2;
-}
-
-// map of container states to their counts
-// for instance, free -> 10, busy -> 5, warming -> 2
-// these are per invoker and action
-message ActionState {
-  map<string, ContainerList> stateLists = 1;
-}
-
-message ContainerList {
-  repeated RPCContainer containers = 1;
-}
-
-message RPCContainer {
-  string id = 1;
-  string core_pin = 2; // 0,1
-}
-
-message UpdateClusterStateRequest {
-  InvokerClusterState clusterState = 1;
-}
-
-message UpdateClusterStateResponse {}
-
-// {InvokerId:({Func: {free: [(containerId, core_pin)], busy: [(containerId, core_pin)...] }},
-//             freeMem: Mb
-//             )
-// }

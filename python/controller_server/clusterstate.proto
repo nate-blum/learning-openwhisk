@@ -54,7 +54,7 @@ message ContainerList {
 
 message RPCContainer {
   string id = 1;
-  string core_pin = 2;
+  string core_pin = 2; // 0,1
 }
 
 message UpdateClusterStateRequest {
@@ -62,3 +62,8 @@ message UpdateClusterStateRequest {
 }
 
 message UpdateClusterStateResponse {}
+
+// {InvokerId:({Func: {free: [(containerId, core_pin)], busy: [(containerId, core_pin)...] }},
+//             freeMem: Mb
+//             )
+// }

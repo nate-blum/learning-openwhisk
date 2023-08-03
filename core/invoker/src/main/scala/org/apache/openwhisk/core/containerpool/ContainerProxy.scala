@@ -418,11 +418,14 @@ class ContainerProxy(factory: (TransactionId,
         .pipeTo(self)
       goto(Running) using PreWarmedData(data.container, data.kind, data.memoryLimit, 1, data.expires)
 
-    case Event(Remove, data: PreWarmedData) => destroyContainer(data, false)
+    case Event(Remove, data: PreWarmedData) =>
+      logging.info(this, "remove, started, prewarmeddata")
+      destroyContainer(data, false)
 
     // prewarm container failed
     case Event(_: FailureMessage, data: PreWarmedData) =>
       MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_CONTAINER_HEALTH_FAILED_PREWARM)
+      logging.info("prewarm failed, started")
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
       destroyContainer(data, false)
   }
@@ -499,6 +502,7 @@ class ContainerProxy(factory: (TransactionId,
       rescheduleJob = true
       rejectBuffered()
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
+      logging.info(this, "container health error, running")
       destroyContainer(newData, false)
 
     // Failed after /init (the first run failed) on prewarmed or cold start
@@ -573,13 +577,16 @@ class ContainerProxy(factory: (TransactionId,
     // warm container failed
     case Event(_: FailureMessage, data: WarmedData) =>
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
+      logging.info(this, "warm failed, running")
       destroyContainer(data, false)
   }
 
   when(Pausing) {
     case Event(ContainerPaused, data: WarmedData)   => goto(Paused)
     //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
-    case Event(_: FailureMessage, data: WarmedData) => destroyContainer(data, false)
+    case Event(_: FailureMessage, data: WarmedData) =>
+      logging.info(this, "destroy container pausing")
+      destroyContainer(data, false)
     case _                                          => delay
   }
 
@@ -608,6 +615,7 @@ class ContainerProxy(factory: (TransactionId,
     case Event(Remove, data: WarmedData) =>
       rescheduleJob = true // to suppress sending message to the pool and not double count
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
+      logging.info(this, "destroying container, paused")
       destroyContainer(data, false)
   }
 
@@ -623,6 +631,7 @@ class ContainerProxy(factory: (TransactionId,
       //if there are items in runbuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
       if (activeCount == 0) {
         //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
+        logging.info(this, "run completed, removing")
         destroyContainer(newData, false)
       } else {
         stay using newData
@@ -635,6 +644,7 @@ class ContainerProxy(factory: (TransactionId,
       val newData = data.withoutResumeRun()
       if (activeCount == 0) {
         //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
+        logging.info(this, "failure, removing")
         destroyContainer(newData, false)
       } else {
         stay using newData
@@ -721,6 +731,7 @@ class ContainerProxy(factory: (TransactionId,
                        replacePrewarm: Boolean,
                        abort: Boolean = false,
                        abortResponse: Option[ActivationResponse] = None) = {
+    logging.info(this, "destroying container")
     val container = newData.container
     if (!rescheduleJob) {
       context.parent ! ContainerRemoved(replacePrewarm)

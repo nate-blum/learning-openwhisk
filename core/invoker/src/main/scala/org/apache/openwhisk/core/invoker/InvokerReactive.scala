@@ -34,7 +34,7 @@ import org.apache.openwhisk.core.containerpool.v2.{NotSupportedPoolState, TotalC
 import org.apache.openwhisk.core.database._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.invoker.Invoker.InvokerEnabled
-import org.apache.openwhisk.core.invoker.grpc.{DeleteContainerEvent, InvokerRPCEvent, NewWarmedContainerEvent}
+import org.apache.openwhisk.core.invoker.grpc.{DeleteRandomContainerEvent, InvokerRPCEvent, NewWarmedContainerEvent}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.spi.SpiLoader
@@ -184,13 +184,13 @@ class InvokerReactive(
                   Future.failed(new IllegalStateException("non-executable action reached the invoker"))
               }
           )
-      case DeleteContainerEvent(actionName, namespace) =>
+      case DeleteRandomContainerEvent(actionName, namespace) =>
         logging.info(this, "delete warmed container event")
         getExecutableAction(actionName, namespace)
           .flatMap(action =>
             action.toExecutableWhiskAction match {
               case Some(executable) =>
-                pool ! DeleteContainer(executable)
+                pool ! DeleteRandomContainer(executable)
                 Future.successful(())
               case None =>
                 logging.error(this, s"couldn't find the action to delete container for ${action.fullyQualifiedName(false)}")

@@ -23,7 +23,7 @@ import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
-import org.apache.openwhisk.core.invoker.grpc.SetAllowOpenWhiskToFreeMemoryEvent
+import org.apache.openwhisk.core.invoker.grpc.{DeleteContainerWithIdEvent, ResetInvokerEvent, SetAllowOpenWhiskToFreeMemoryEvent}
 
 import scala.annotation.tailrec
 import scala.collection.immutable
@@ -36,7 +36,7 @@ case class ColdStartKey(kind: String, memory: ByteSize)
 case object EmitMetrics
 
 case object AdjustPrewarmedContainer
-case class DeleteContainer(action: ExecutableWhiskAction)
+case class DeleteRandomContainer(action: ExecutableWhiskAction)
 
 /**
  * A pool managing containers to run actions on.
@@ -119,6 +119,24 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       akka.event.Logging.InfoLevel)
   }
 
+  def getContainerForDeletionWithId(id: String): Option[ActorRef] = {
+    freePool.find(entry => {
+      entry._2.isInstanceOf[ContainerStarted] &&
+        entry._2.asInstanceOf[ContainerStarted].container.containerId.asString == id })
+    .orElse {
+      busyPool.find(entry => {
+        entry._2.isInstanceOf[ContainerStarted] &&
+          entry._2.asInstanceOf[ContainerStarted].container.containerId.asString == id
+      })
+    }
+    .orElse {
+      prewarmedPool.find(entry => {
+        entry._2.isInstanceOf[ContainerStarted] &&
+          entry._2.asInstanceOf[ContainerStarted].container.containerId.asString == id
+      })
+    } map (_._1)
+  }
+
   def getContainerForDeletionWithPriority(action: ExecutableWhiskAction, pools: List[Map[ActorRef, ContainerData]]): Option[ActorRef] = {
     var ret: Option[ActorRef] = None
 
@@ -150,12 +168,20 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           s"Cannot create prewarm container due to reaching the invoker memory limit: ${poolConfig.userMemory.toMB}")
       }
 
-    case DeleteContainer(action) =>
+    case DeleteRandomContainer(action) =>
       getContainerForDeletionWithPriority(action, List(freePool, busyPool)) match {
         case Some(ref) =>
           removeContainer(ref)
         case None =>
           logging.info(this, s"no warm containers for action ${action.name}, either free or busy, were found on this invoker to be deleted")
+      }
+
+    case DeleteContainerWithIdEvent(containerId) =>
+      getContainerForDeletionWithId(containerId) match {
+        case Some(ref) =>
+          removeContainer(ref)
+        case None =>
+          logging.info(this, s"could not find container $containerId when attempting to delete")
       }
 
     case SetAllowOpenWhiskToFreeMemoryEvent(setValue) =>
@@ -164,6 +190,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case GetActionStates() =>
       sender() ! this.actionStates()
+
+    case ResetInvokerEvent =>
+      logging.info(this, "resetting the invoker to startup state")
+      //TODO: reset run buffer?
+      List(freePool, busyPool, prewarmedPool, prewarmStartingPool, warmingPool)
+        .flatMap(_.keys) foreach removeContainer
 
     // A job to run on a container
     //
@@ -204,8 +236,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                   } else None
                 })
             .orElse {
-              if (allowOpenWhiskToFreeMemory)
+              if (allowOpenWhiskToFreeMemory) {
                 // Remove a container and create a new one for the given job
+                logging.info(this, "deleting container to free memory")
                 ContainerPool
                   // Only free up the amount, that is really needed to free up
                   .remove(freePool, Math.min(r.action.limits.memory.megabytes, memoryConsumptionOf(freePool)).MB)
@@ -221,7 +254,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                         incrementColdStartCount(kind, memory)
                         container
                       })
-              else {
+              } else {
                 logging.info(this,
                   s"currently disallowing openwhisk from killing containers to free memory, must reschedule invocation of function ${r.action.name.name}")
                 None
@@ -502,6 +535,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Removes a container and updates state accordingly. */
   def removeContainer(toDelete: ActorRef) = {
+    logging.info(this, "removing container")
     toDelete ! Remove
     freePool = freePool - toDelete
     busyPool = busyPool - toDelete

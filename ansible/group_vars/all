@@ -99,6 +99,9 @@ controller:
   # flag to decide whether to send every single state update request to the agent
   # regardless of whether anything has changed
   sendAllUpdateRequests: false
+  agentIp: "172.17.0.1"
+  routingPort: 50051
+  clusterStatePort: 50052
   timeoutFactor: "{{ controller_timeout_factor | default(2) }}"
   timeoutAddon: "{{ controller_timeout_addon | default('1 m') }}"
   instances: "{{ groups['controllers'] | length }}"
