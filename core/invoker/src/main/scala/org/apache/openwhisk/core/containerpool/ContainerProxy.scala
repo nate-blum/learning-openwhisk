@@ -425,7 +425,7 @@ class ContainerProxy(factory: (TransactionId,
     // prewarm container failed
     case Event(_: FailureMessage, data: PreWarmedData) =>
       MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_CONTAINER_HEALTH_FAILED_PREWARM)
-      logging.info("prewarm failed, started")
+      logging.info(this, "prewarm failed, started")
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
       destroyContainer(data, false)
   }
