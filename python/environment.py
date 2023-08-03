@@ -11,13 +11,15 @@ from itertools import chain
 from bisect import bisect
 from invoker_client import invoker_pb2 as invoker_types
 from invoker_client import invoker_pb2_grpc as invoker_service
-
+from controller_server import clusterstate_pb2, clusterstate_pb2_grpc, routing_pb2_grpc, routing_pb2
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
 from reward import compute_reward_using_overall_stat
+from grpc_reflection.v1alpha import reflection
 
 import training_configs  # training config
 import config  # cluster environment config
 from load_balance import start_rpc_routing_server_process
+from state_collector import WskClusterInfoCollector
 
 
 class Core:
@@ -103,8 +105,10 @@ class Monitor:
 
 
 class Cluster:
-    SERVER_RPC_THREAD_COUNT = 4
-    RPC_SERVER_PORT = ""  # RPC server port
+    SERVER_RPC_THREAD_COUNT = 4  # for routing
+    SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 1  # 1 should be grood enough to handle, as only one rpc at a time
+    RPC_SERVER_PORT = ""  # RPC server port, routing server
+    RPC_SERVER_PORT_CLUSTER_UPDATE = "" #RPC server port, cluster state update
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
     ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
     TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
@@ -159,6 +163,23 @@ class Cluster:
                                              args=(self.process_q, self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
                                                    self.DEFAULT_SERVER_TYPE))
         self.load_balancer_process.start()
+        # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
+        # state update server might use the stub for sending rpc request)-----------------------------------
+        self.routing_channel = grpc.insecure_channel(f'localhost:{self.RPC_SERVER_PORT}')
+        self.routing_stub = routing_pb2_grpc.RoutingServiceStub(self.routing_channel)  # channel is thread safe
+        # -------------------Start Cluster Update RPC server--------------------------------------------
+        self.cluster_info_update_server = grpc.server(
+            futures.ThreadPoolExecutor(max_workers=self.SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE))
+        clusterstate_pb2_grpc.add_ClusterStateServiceServicer_to_server(WskClusterInfoCollector(self),
+                                                                        self.cluster_info_update_server)
+        reflection.enable_server_reflection(
+            clusterstate_pb2.DESCRIPTOR.services_by_name["WskClusterInfoCollector"].full_name,
+            reflection.SERVICE_NAME, self.cluster_info_update_server)
+        self.cluster_info_update_server.add_insecure_port(f"[::]:{self.RPC_SERVER_PORT_CLUSTER_UPDATE}")
+        self.cluster_info_update_server.start()
+
+
+
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
@@ -217,7 +238,8 @@ class Cluster:
         return candidate_lst[index_min]
 
     def delete_container_multiple_pinning(self, func_id_str: str, type: str) -> Optional[str]:
-        lst_warmset: List[Set[str]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if invk.type == type]
+        lst_warmset: List[Set[str]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
+                                       invk.type == type]
         lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
         lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
         lst_warm: List[str] = [container for s in lst_warmset for container in s]  # flatten the list
@@ -293,6 +315,11 @@ class Cluster:
 
     def compute_utilization(self) -> Dict:
         pass
+
+    def _rpc_get_arrival_info(self)->tuple[dict[int,int],dict[int,int]]:
+        # get the arrival info from a rpc call to the routing rpc server
+        response:routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
+        return response.query_count_1s, response.query_count_3s
 
     def get_obs(self):
         pass

@@ -31,6 +31,8 @@ service RoutingService {
   rpc RoutingUpdateClusterState (UpdateClusterStateRequest) returns (UpdateClusterStateResponse) {}
 
   rpc GetArrivalInfo (EmptyRequest) returns (GetArrivalInfoResponse) {}
+
+  rpc NotifyClusterInfo(NotifyClusterInfoRequest) returns (NotifyClusterInfoResponse) {}
 }
 
 message EmptyRequest {} // placeholder type for request
@@ -46,4 +48,16 @@ message GetInvocationRouteRequest {
 
 message GetInvocationRouteResponse {
   int32 invokerInstanceId = 1;
+}
+
+message ContainerCounter{
+  repeated uint32 count = 1;
+  repeated uint32 invokerId = 2;
+
+}
+message NotifyClusterInfoRequest {
+  map<string, ContainerCounter> func_2_ContainerCounter =1;
+}
+message NotifyClusterInfoResponse {
+
 }
