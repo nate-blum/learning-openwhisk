@@ -35,6 +35,7 @@ import org.apache.openwhisk.core.database.NoDocumentException
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.types.EntityStore
+import org.apache.openwhisk.grpc.{ActionState, ActionStatePerInvoker, ContainerList, InvokerClusterState, RPCContainer}
 
 // Received events
 case object GetStatus
@@ -58,7 +59,7 @@ case class InvocationFinishedMessage(invokerInstance: InvokerInstanceId, result:
 
 // Sent to a monitor if the state changed
 case class CurrentInvokerPoolState(newState: IndexedSeq[InvokerHealth])
-case class RPCInvokerPoolState(newState: IndexedSeq[InvokerHealth], invokerClusterState: InvokerClusterState)
+case class RPCInvokerPoolState(newState: IndexedSeq[InvokerHealth], invokerClusterState: mutable.Map[Int, ActionStatePerInvoker])
 
 // Data stored in the Invoker
 final case class InvokerInfo(buffer: RingBuffer[InvocationFinishedResult])
@@ -92,7 +93,20 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
   var instanceToRef = immutable.Map.empty[Int, ActorRef]
   var refToInstance = immutable.Map.empty[ActorRef, InvokerInstanceId]
   var status = IndexedSeq[InvokerHealth]()
-  var invokerClusterState: InvokerClusterState = InvokerClusterState(mutable.Map.empty)
+  var invokerClusterState: mutable.Map[Int, ActionStatePerInvoker] = mutable.Map.empty[Int, ActionStatePerInvoker]
+
+  def convertActionStatesToActionStatePerInvoker(actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long)): ActionStatePerInvoker = {
+    ActionStatePerInvoker(
+      actionStates._1.map(_._1.actionName).toSet
+        .map(name => name -> ActionState(
+          actionStates._1.filter(_._1.actionName == name)
+            .map(state => state._1.state -> ContainerList(
+              state._2.map(c => RPCContainer(c._1, c._2)).toSeq
+            ))
+        )).toMap,
+      actionStates._2
+    )
+  }
 
   def receive: Receive = {
     case p: PingMessage =>
@@ -107,7 +121,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
         refToInstance = refToInstance.updated(invoker, p.instance)
       }
 
-      invokerClusterState.actionStatePerInvoker.update(p.instance.toInt, p.actionStates)
+      invokerClusterState.update(p.instance.toInt, convertActionStatesToActionStatePerInvoker(p.actionStates))
 
       invoker.forward(p)
 

@@ -47,35 +47,10 @@ object InvokerState {
   case object Offline extends Unusable { val asString = "down" }
 }
 
-case class RPCContainer(id: String, core_pin: String)
-object RPCContainerJsonProtocol extends DefaultJsonProtocol {
-  implicit val rpcContainerFormat = jsonFormat2(RPCContainer)
+case class ContainerListKey(actionName: String, state: String)
+object ContainerListKeyJsonProtocol extends DefaultJsonProtocol {
+  implicit val containerListKeyFormat = jsonFormat2(ContainerListKey)
 }
-
-case class ContainerList(containers: Iterable[RPCContainer])
-object ContainerListJsonProtocol extends DefaultJsonProtocol {
-  import RPCContainerJsonProtocol._
-
-  implicit val containerListFormat = jsonFormat1(ContainerList)
-}
-
-// "free" -> list of containers
-case class ActionState(stateLists: Map[String, ContainerList])
-object ActionStateJsonProtocol extends DefaultJsonProtocol {
-  import ContainerListJsonProtocol._
-
-  implicit val actionStateFormat = jsonFormat1(ActionState)
-}
-
-// <action name> -> list of states
-case class ActionStatePerInvoker(actionStates: Map[String, ActionState], freeMemoryMB: Long)
-object ActionStatePerInvokerJsonProtocol extends DefaultJsonProtocol {
-  import ActionStateJsonProtocol._
-
-  implicit val actionStatePerInvokerFormat = jsonFormat2(ActionStatePerInvoker)
-}
-
-case class InvokerClusterState(actionStatePerInvoker: mutable.Map[Int, ActionStatePerInvoker])
 
 /**
  * Describes an abstract invoker. An invoker is a local container pool manager that

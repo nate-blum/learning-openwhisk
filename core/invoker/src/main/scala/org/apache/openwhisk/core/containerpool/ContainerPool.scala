@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.containerpool
 
 import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
-import org.apache.openwhisk.common.{ActionState, ActionStatePerInvoker, ContainerList, Logging, LoggingMarkers, MetricEmitter, RPCContainer, TransactionId}
+import org.apache.openwhisk.common.{ContainerListKey, Logging, LoggingMarkers, MetricEmitter, TransactionId}
 import org.apache.openwhisk.core.connector.MessageFeed
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
@@ -555,26 +555,26 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     memoryConsumptionOf(pool) + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB).sum + memory.toMB <= poolConfig.userMemory.toMB
   }
 
-  def containerList(pool: Map[ActorRef, Any]): ContainerList = {
-    ContainerList(pool collect {
+  def containerList(pool: Map[ActorRef, Any]): Iterable[(String, String)] = {
+    pool collect {
       case (_, d: WarmedData) =>
-        RPCContainer(d.container.containerId.asString, d.params.getOrElse(Map.empty).get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
+        (d.container.containerId.asString, d.params.getOrElse(Map.empty).get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
       case (_, (_, p: Map[_, _])) =>
-        RPCContainer("", p.asInstanceOf[Map[String, Set[String]]].get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
-    })
+        ("", p.asInstanceOf[Map[String, Set[String]]].get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
+    }
   }
 
-  private def actionState(actionName: String): ActionState = {
-    ActionState(Map(
-      "free" -> containerList(freePool.filter(_._2.asInstanceOf[ContainerInUse].action.name.name == actionName)),
-      "busy" -> containerList(busyPool.filter(_._2.asInstanceOf[ContainerInUse].action.name.name == actionName)),
-      "warming" -> containerList(warmingPool.filter(_._2._1.name.name == actionName))
-    ))
+  private def actionState(actionName: String): List[(ContainerListKey, Iterable[(String, String)])] = {
+    List(
+      ContainerListKey(actionName, "free") -> containerList(freePool.filter(_._2.asInstanceOf[ContainerInUse].action.name.name == actionName)),
+      ContainerListKey(actionName, "busy") -> containerList(busyPool.filter(_._2.asInstanceOf[ContainerInUse].action.name.name == actionName)),
+      ContainerListKey(actionName, "warming") -> containerList(warmingPool.filter(_._2._1.name.name == actionName))
+    )
   }
 
-  def actionStates(): ActionStatePerInvoker = {
+  def actionStates(): (Map[ContainerListKey, Iterable[(String, String)]], Long) = {
     val actions: Set[String] = (Set(freePool, busyPool) flatMap { pool => pool.map(_._2.asInstanceOf[ContainerInUse].action.name.name) }) ++ warmingPool.map(_._2._1.name.name)
-    ActionStatePerInvoker(actions.map(action => action -> actionState(action)).toMap, freeMemoryMB())
+    (actions.flatMap(actionState).toMap, freeMemoryMB())
   }
 
   private def freeMemoryMB(): Long = {

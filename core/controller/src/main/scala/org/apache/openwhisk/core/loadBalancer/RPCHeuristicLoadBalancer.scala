@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.loadBalancer
 
 import akka.actor.ActorRef
 import akka.actor.ActorRefFactory
-
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.cluster.ClusterEvent._
 import akka.cluster.{Cluster, Member, MemberStatus}
@@ -37,6 +36,7 @@ import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
 import org.apache.openwhisk.core.loadBalancer.grpc.RoutingClient
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
+import org.apache.openwhisk.grpc.ActionStatePerInvoker
 import org.apache.openwhisk.spi.SpiLoader
 
 import scala.collection.mutable
@@ -109,6 +109,7 @@ class RPCHeuristicLoadBalancer(
       case RPCInvokerPoolState(newState, invokerClusterState) =>
         schedulingState.updateInvokers(newState)
         schedulingState.updateInvokerClusterState(invokerClusterState)
+        client.executeClusterStateUpdateRouting(invokerClusterState)
 
       // State of the cluster as it is right now
       case CurrentClusterState(members, _, _, _, _) =>
@@ -233,7 +234,7 @@ object RPCHeuristicLoadBalancer extends LoadBalancerProvider {
  */
 case class RPCHeuristicLoadBalancerState(
                                           private var _invokers: IndexedSeq[InvokerHealth] = IndexedSeq.empty[InvokerHealth],
-                                          private var _invokerClusterState: InvokerClusterState = InvokerClusterState(mutable.Map.empty),
+                                          private var _invokerClusterState: mutable.Map[Int, ActionStatePerInvoker] = mutable.Map.empty,
                                           private var _managedInvokers: IndexedSeq[InvokerHealth] = IndexedSeq.empty[InvokerHealth],
                                           protected[loadBalancer] var _invokerSlots: IndexedSeq[NestedSemaphore[FullyQualifiedEntityName]] =
                                                IndexedSeq.empty[NestedSemaphore[FullyQualifiedEntityName]],
@@ -251,12 +252,12 @@ case class RPCHeuristicLoadBalancerState(
 
   /** Getters for the variables, setting from the outside is only allowed through the update methods below */
   def invokers: IndexedSeq[InvokerHealth] = _invokers
-  def invokerClusterState: InvokerClusterState = _invokerClusterState
+  def invokerClusterState: mutable.Map[Int, ActionStatePerInvoker] = _invokerClusterState
   def managedInvokers: IndexedSeq[InvokerHealth] = _managedInvokers
   def invokerSlots: IndexedSeq[NestedSemaphore[FullyQualifiedEntityName]] = _invokerSlots
   def clusterSize: Int = _clusterSize
 
-  def updateInvokerClusterState(invokerClusterState: InvokerClusterState): Unit = {
+  def updateInvokerClusterState(invokerClusterState: mutable.Map[Int, ActionStatePerInvoker]): Unit = {
     _invokerClusterState = invokerClusterState
   }
 

@@ -568,9 +568,7 @@ class ContainerProxy(factory: (TransactionId,
     case Event(StateTimeout, data: WarmedData) =>
       logging.info(this, s"reached pause timeout, ${pauseGrace}")
       data.container.suspend()(TransactionId.invokerNanny).map(_ => ContainerPaused).pipeTo(self)
-//      goto(Pausing)
-      //TODO pausing activity, why does trying to pause break the container, check on ip address for controller
-      stay
+      goto(Pausing)
 
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
     case Event(Remove, data: WarmedData) =>

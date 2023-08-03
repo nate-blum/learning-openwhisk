@@ -19,7 +19,7 @@ package org.apache.openwhisk.core.connector
 
 import scala.util.Try
 import spray.json._
-import org.apache.openwhisk.common.{ActionStatePerInvoker, TransactionId}
+import org.apache.openwhisk.common.{ContainerListKey, TransactionId}
 import org.apache.openwhisk.core.entity._
 
 import scala.concurrent.duration._
@@ -280,14 +280,14 @@ object AcknowledegmentMessage extends DefaultJsonProtocol {
   }
 }
 
-case class PingMessage(instance: InvokerInstanceId, actionStates: ActionStatePerInvoker, isEnabled: Option[Boolean] = None) extends Message {
+case class PingMessage(instance: InvokerInstanceId, actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long), isEnabled: Option[Boolean] = None) extends Message {
   override def serialize = PingMessage.serdes.write(this).compactPrint
 
   def invokerEnabled: Boolean = isEnabled.getOrElse(true)
 }
 
 object PingMessage extends DefaultJsonProtocol {
-  import org.apache.openwhisk.common.ActionStatePerInvokerJsonProtocol._
+  import org.apache.openwhisk.common.ContainerListKeyJsonProtocol._
 
   def parse(msg: String) = Try(serdes.read(msg.parseJson))
 

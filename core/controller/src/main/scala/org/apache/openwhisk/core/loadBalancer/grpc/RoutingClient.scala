@@ -6,6 +6,7 @@ import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.loadBalancer.RPCHeuristicLoadBalancerConfig
 import org.apache.openwhisk.grpc._
 
+import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
@@ -20,9 +21,9 @@ class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSyst
     Await.result(request, 10.seconds)
   }
 
-  def executeClusterStateUpdateRouting(state: InvokerClusterState): UpdateClusterStateResponse = {
+  def executeClusterStateUpdateRouting(state: mutable.Map[Int, ActionStatePerInvoker]): UpdateClusterStateResponse = {
     logging.info(this, "executing clusterstate request")
-    val request: Future[UpdateClusterStateResponse] = client.routingUpdateClusterState(UpdateClusterStateRequest(Some(state)))
+    val request: Future[UpdateClusterStateResponse] = client.routingUpdateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap))))
     Await.result(request, 10.seconds)
   }
 }

@@ -14,6 +14,10 @@ class RoutingService(routing_service.RoutingServiceServicer):
     def GetInvocationRoute(self, request, context):
         return routing_types.GetInvocationRouteResponse(invokerInstanceId=0)
 
+    def RoutingUpdateClusterState(self, request, context):
+        print(request)
+        return routing_types.RoutingUpdateClusterStateResponse(success=True)
+
 def main():
     opts, args = getopt.getopt(sys.argv[1:], 'p:')
     for opt, arg in opts:
