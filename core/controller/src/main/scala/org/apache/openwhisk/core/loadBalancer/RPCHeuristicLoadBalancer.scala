@@ -140,6 +140,7 @@ class RPCHeuristicLoadBalancer(
   /** 1. Publish a message to the loadbalancer */
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
+    println(lbConfig)
 
     val invoker: Option[InvokerInstanceId] = schedulingState.invokers.find(_.id.instance == client.executeRoutingRequest(action.name.name).invokerInstanceId).map(_.id)
     logging.info(this, if (invoker.isDefined) s"found invoker ${invoker.get}" else "no invoker found")
