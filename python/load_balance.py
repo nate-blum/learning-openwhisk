@@ -15,7 +15,7 @@ from multiprocessing import Queue
 from environment import Invoker
 
 
-class WskControllerService(routing_pb2_grpc.RoutingServiceServicer):
+class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
     TIMER_INTERVAL_SEC = 0.1
 
     def __init__(self, queue: Queue, default_server_type: str):
@@ -31,7 +31,7 @@ class WskControllerService(routing_pb2_grpc.RoutingServiceServicer):
         # self.func_2_warminginfoSorted: Dict[int, List[Tuple[int, int]]] = {}
 
         self.func_2_containerSumList: Dict[str, List[int]] = {}
-        self.func_2_invokerId: Dict[str, int] = {}  # pair with the above
+        self.func_2_invokerId: Dict[str, List[int]] = {}  # pair with the above
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_1sec = Lock()
         self.lock_3sec = Lock()
@@ -42,7 +42,6 @@ class WskControllerService(routing_pb2_grpc.RoutingServiceServicer):
         self.timer_update_arrival_info_thread.start()
 
     def _select_invoker_to_dipatch(self, func_id):
-        # TODO, settle down the id is int or str
         # NOTE,Current heuristic: route to a invoker with the probability proportional to how many container
         #  the invoker has (sum of warm, warming, busy) this is different than the simulator.
         try:
@@ -63,6 +62,9 @@ class WskControllerService(routing_pb2_grpc.RoutingServiceServicer):
             self.func_2_arrivalQueue3Sec[func_id].append(t)
         res = self._select_invoker_to_dipatch(func_id)
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
+    def NotifyClusterInfo(self, request, context):
+        #TODO
+        return routing_pb2.NotifyClusterInfoResponse()
 
     def _threaded_update_arrival_queue(self, interval_sec):
         # update the shared arrival queue in a separated thread, so that when the rpc is called, there won't too much
@@ -101,7 +103,7 @@ class WskControllerService(routing_pb2_grpc.RoutingServiceServicer):
 def start_rpc_routing_server_process(queue: Queue, rpc_server_port: str, max_num_thread_rpc_server: int,
                                      default_svr_type: str):
     rpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_num_thread_rpc_server))
-    routing_pb2_grpc.add_RoutingServiceServicer_to_server(WskControllerService(queue, default_svr_type), rpc_server)
+    routing_pb2_grpc.add_RoutingServiceServicer_to_server(WskRoutingService(queue, default_svr_type), rpc_server)
     rpc_server.add_insecure_port(f"0.0.0.0:{rpc_server_port}")
     rpc_server.start()  # non blocking
     rpc_server.wait_for_termination()
