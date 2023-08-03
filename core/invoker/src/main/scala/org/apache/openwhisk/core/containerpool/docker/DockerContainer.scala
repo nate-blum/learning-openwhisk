@@ -69,7 +69,7 @@ object DockerContainer {
              dnsSearch: Seq[String] = Seq.empty,
              dnsOptions: Seq[String] = Seq.empty,
              name: Option[String] = None,
-             useRunc: Boolean = true,
+             useRunc: Boolean = false,
              dockerRunParameters: Map[String, Set[String]])(implicit docker: DockerApiWithFileAccess,
                                                             runc: RuncApi,
                                                             as: ActorSystem,
