@@ -4,15 +4,15 @@ import sys
 from concurrent import futures
 
 import grpc
-import controller_pb2 as controller_types
-import controller_pb2_grpc as controller_service
+import routing_pb2 as routing_types
+import routing_pb2_grpc as routing_service
 from grpc_reflection.v1alpha import reflection
 
 state = {}
 
-class ControllerService(controller_service.ControllerServiceServicer):
+class RoutingService(routing_service.RoutingServiceServicer):
     def GetInvocationRoute(self, request, context):
-        return controller_types.GetInvocationRouteResponse(invokerInstanceId=0)
+        return routing_types.GetInvocationRouteResponse(invokerInstanceId=0)
 
 def main():
     opts, args = getopt.getopt(sys.argv[1:], 'p:')
@@ -21,8 +21,8 @@ def main():
             state['port'] = arg
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    controller_service.add_ControllerServiceServicer_to_server(ControllerService(), server)
-    reflection.enable_server_reflection((controller_types.DESCRIPTOR.services_by_name["ControllerService"].full_name, reflection.SERVICE_NAME), server)
+    routing_service.add_RoutingServiceServicer_to_server(RoutingService(), server)
+    reflection.enable_server_reflection((routing_types.DESCRIPTOR.services_by_name["RoutingService"].full_name, reflection.SERVICE_NAME), server)
     server.add_insecure_port(f"[::]:{state['port']}")
     server.start()
     server.wait_for_termination()
