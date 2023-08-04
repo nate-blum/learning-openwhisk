@@ -16,18 +16,12 @@ from environment import Invoker
 class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
     TIMER_INTERVAL_SEC = 0.1
 
-    def __init__(self, queue: Queue, default_server_type: str):
+    def __init__(self, default_server_type: str):
         self.DEFAULT_SERVER_TYPE = default_server_type
         # might be accessed from multiple thread
         self.func_2_arrivalQueue1Sec = defaultdict(
             deque)  # deque's append operation is thread-safe, but we still use lock
         self.func_2_arrivalQueue3Sec = defaultdict(deque)
-        # the container count should  be > 0
-        # self.func_2_warminfoSorted: Dict[int, List[Tuple[
-        #     int, int]]] = {}  # {func_id: [....(invokerId, warmNum)...descending order...]}, updated on each heartbeat
-        # self.func_2_busyinfoSorted: Dict[int, List[Tuple[int, int]]] = {}
-        # self.func_2_warminginfoSorted: Dict[int, List[Tuple[int, int]]] = {}
-
 
         self.func_2_containerSumList: Dict[str, List[int]] = {}
         self.func_2_invokerId: Dict[str, List[int]] = {}  # pair with the above
@@ -35,7 +29,6 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.lock_routing_info = Lock()
         self.lock_1sec = Lock()
         self.lock_3sec = Lock()
-        self.process_queue = queue
 
         self.timer_update_arrival_info_thread = Thread(target=self._threaded_update_arrival_queue,
                                                        args=(self.TIMER_INTERVAL_SEC,), daemon=True)
@@ -56,9 +49,9 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             # TODO cold start heuristic
             return 0
 
-    def GetInvocationRoute(self, request, context):
+    def GetInvocationRoute(self, request:routing_pb2.GetInvocationRouteRequest, context):
         t = time_ns()
-        func_id = 0  # TODO
+        func_id = request.actionName
         with self.lock_1sec:
             self.func_2_arrivalQueue1Sec[func_id].append(t)  # NOTE, should be thread-safe
         with self.lock_3sec:
@@ -89,7 +82,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             time.sleep(interval_sec)  # every 100 millisecond
 
     def GetArrivalInfo(self, request, context):
-        # call by the agent to collect arrival info
+        # call by the agent to collect arrival info, this won't lock a lot of time as the background helper thread
         res_1s = {}
         res_3s = {}
         curr_time_ns = time_ns()
@@ -107,11 +100,10 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s)
 
 
-def start_rpc_routing_server_process(queue: Queue, rpc_server_port: str, max_num_thread_rpc_server: int,
+def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,
                                      default_svr_type: str):
     rpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_num_thread_rpc_server))
-    routing_pb2_grpc.add_RoutingServiceServicer_to_server(WskRoutingService(queue, default_svr_type), rpc_server)
+    routing_pb2_grpc.add_RoutingServiceServicer_to_server(WskRoutingService(default_svr_type), rpc_server)
     rpc_server.add_insecure_port(f"0.0.0.0:{rpc_server_port}")
     rpc_server.start()  # non blocking
     rpc_server.wait_for_termination()
-    return rpc_server

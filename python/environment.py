@@ -1,3 +1,4 @@
+import sys
 import logging
 from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
 from operator import itemgetter
@@ -99,18 +100,9 @@ class Func:
         self.cpu_req = cpu_req
         self.invoker_2_referenceExecTime = invoker_2_referenceExecTime
 
-
-# # Monitor collects aggregated info for agent to make decision
-# class Monitor:
-#     def __init__(self):
-#         self.func_2_arrival_queue: Dict[int, Deque] = {}
-#         self.func_2_slaLaency_for_reward: Dict[int, LatencyInfo] = {}
-#         self.func_2_nColdStart = {}
-
-
 class Cluster:
-    SERVER_RPC_THREAD_COUNT = 4  # for routing
-    SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 1  # 1 should be grood enough to handle, as only one rpc at a time
+    SERVER_RPC_THREAD_COUNT = 8  # for routing
+    SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
     RPC_SERVER_PORT = ""  # RPC server port, routing server
     RPC_SERVER_PORT_CLUSTER_UPDATE = ""  # RPC server port, cluster state update
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
@@ -124,7 +116,7 @@ class Cluster:
     DEFAULT_SERVER_TYPE = config.default_svr_type
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
-
+        self.setup_logging()
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
@@ -138,11 +130,6 @@ class Cluster:
             str, Dict[Invoker, frozenset[Container]]] = {}  # {func_id: {invoker: SetOfContainer}}
         self.func_2_busyinfo: Dict[str, Dict[Invoker, frozenset[Container]]] = {}
         self.func_2_warminginfo: Dict[str, Dict[Invoker, frozenset[Container]]] = {}
-
-        # self.func_2_warminfoSorted: Dict[int, List[Tuple[
-        #     Invoker, int]]] = {}  # {func_id: [....(invoker, warmNum)...descending order...]}, updated on each heartbeat
-        # self.func_2_busyinfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
-        # self.func_2_warminginfoSorted: Dict[int, List[Tuple[Invoker, int]]] = {}
 
         # FIFO, must use dict as container might have the same id on different invoker (docker runtime)
         self.most_recent_killed_container_cache: dict[int, Deque[str]] = None
@@ -162,10 +149,10 @@ class Cluster:
             self.funcname_2_id[name] = func_id
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
-        self.process_q = Queue()
+        self._initialization() # must start before the rpc server b/c rpc server use the invoker instances
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
-                                             args=(self.process_q, self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
+                                             args=( self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
                                                    self.DEFAULT_SERVER_TYPE))
         self.load_balancer_process.start()
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
@@ -182,13 +169,26 @@ class Cluster:
             reflection.SERVICE_NAME, self.cluster_info_update_server)
         self.cluster_info_update_server.add_insecure_port(f"[::]:{self.RPC_SERVER_PORT_CLUSTER_UPDATE}")
         self.cluster_info_update_server.start()
-        self._initialization()
+
+    def setup_logging(self):
+        # file handler
+        # file_handler = logging.FileHandler(os.path.join('logs', 'log_{}'.format(self.time_stamp)), mode='w')
+        # file_logger_formatter = logging.Formatter('%(message)s')
+        # file_handler.setFormatter(file_logger_formatter)
+        # file_handler.setLevel(logging.INFO)
+        # stream handler
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        stream_handler.setFormatter(stream_logger_formatter)
+        # stream_handler.setLevel(logging.DEBUG)
+        # must be called in main thread before any sub-thread starts
+        logging.basicConfig(level=logging.DEBUG, handlers=[stream_handler])
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
 
     def _initialization(self):
-        # instantiate Invoker instances list, the invoker instance will initialize the Core object
+        # instantiate Invoker instances, the invoker instance will initialize the Core object
         invoker_id_counter = 0
         for _type, spec_map_lst in self.cluster_spec_dict:
             self.server_types.append(_type)
@@ -207,6 +207,7 @@ class Cluster:
                 invoker_id_counter += 1
         self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
                                                    for invoker_id in self.id_2_invoker.keys()}
+        logging.info("Env initialization done")
 
     def _update_invoker_state(self):
         # update the invoker state after controller rpc update
@@ -363,9 +364,9 @@ class Cluster:
                                         cpu_req=cpu_req,
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.intId_2_funcStrName[func_id] = name
-        self.func_2_warminfo[name] = {self.id_2_invoker[i]: set() for i in self.id_2_invoker.keys()}
-        self.func_2_busyinfo[name] = {self.id_2_invoker[i]: set() for i in self.id_2_invoker.keys()}
-        self.func_2_warminginfo[name] = {self.id_2_invoker[i]: set() for i in self.id_2_invoker.keys()}
+        self.func_2_warminfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
+        self.func_2_busyinfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
+        self.func_2_warminginfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
         self.func_id_counter += 1  # increase the function id counter
         return func_id
 
