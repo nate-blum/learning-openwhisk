@@ -84,6 +84,14 @@ class Invoker:
         for core in self.id_2_core.values():
             core.num_pinned_container = 0
 
+    def get_total_core_pinning_count(self):
+        # NOTE, this is different than the total number of container on this invoker,
+        #  as a container can take up more than one core. This measure how busy the core is on average
+        total = 0
+        for core in self.id_2_core.values():
+            total += core.num_pinned_container
+        return total
+
 
 class Container:
     def __init__(self, str_id: str, pinned_core: List[Core], invoker: Invoker):
@@ -93,13 +101,15 @@ class Container:
 
 
 class Func:
-    def __init__(self, id, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
+    def __init__(self, id, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
         self.id = id
         self.namesp = namesp
         self.name = name
         self.mem_req = mem_req
         self.cpu_req = cpu_req
-        self.invoker_2_referenceExecTime = invoker_2_referenceExecTime
+        self.sla = sla
+        self.invokerType_2_referenceExecTime:dict[str, int] = invoker_2_referenceExecTime
+
 
 class Cluster:
     SERVER_RPC_THREAD_COUNT = 8  # for routing
@@ -115,6 +125,8 @@ class Cluster:
     SERVER_POWER_SPECS = config.server_power_specs
     RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
     DEFAULT_SERVER_TYPE = config.default_svr_type
+    do_state_clip:bool = training_configs.NN['state_clip']
+    state_clip_value = 2000
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
         self.setup_logging()
@@ -138,6 +150,7 @@ class Cluster:
         self.cluster_spec_dict = cluster_spec_dict
         self.server_type_lst = list(cluster_spec_dict.keys())
         self.server_types = []
+        self.serverType_2_index: dict[str, int] = {}
         self.func_spec_dict = func_spec_dict
         self.all_func_ids = []
         self.actionRealizeCounter = ActionRealizeCounter()
@@ -146,10 +159,10 @@ class Cluster:
             self.all_func_ids.append(func_id)
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
-        self._initialization() # must start before the rpc server b/c rpc server use the invoker instances
+        self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
-                                             args=( self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
+                                             args=(self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
                                                    self.DEFAULT_SERVER_TYPE))
         self.load_balancer_process.start()
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
@@ -202,6 +215,8 @@ class Cluster:
                     self.type_2_invoker[_type] = set()
                 self.type_2_invoker[_type].add(self.id_2_invoker[invoker_id_counter])
                 invoker_id_counter += 1
+        for i, _type in enumerate(self.server_types):
+            self.serverType_2_index[_type] = i
         self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
                                                    for invoker_id in self.id_2_invoker.keys()}
         logging.info("Env initialization done")
@@ -209,9 +224,9 @@ class Cluster:
     def _update_invoker_state(self):
         # update the invoker state after controller rpc update
         for invoker in self.id_2_invoker.values():
-            warm_sum:int = 0
-            busy_sum:int = 0
-            warming_sum:int = 0
+            warm_sum: int = 0
+            busy_sum: int = 0
+            warming_sum: int = 0
             # loop all functions
             for invk_2_container_set in self.func_2_busyinfo.values():
                 busy_sum += len(invk_2_container_set[invoker])
@@ -219,7 +234,7 @@ class Cluster:
                 warm_sum += len(invk_2_container_set[invoker])
             for invk_2_container_set in self.func_2_warminginfo.values():
                 warming_sum += len(invk_2_container_set[invoker])
-            invoker.num_busy_container =  busy_sum
+            invoker.num_busy_container = busy_sum
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
 
@@ -332,7 +347,33 @@ class Cluster:
 
     # get the features of All function so that to choose the active working functions.
     def select_from_all_state(self, ema_dict: ScalarMap[str, float]) -> None:
-        pass
+        delta_ema_ndarray = np.array(list(ema_dict.values()))
+        delta_ema_mean = delta_ema_ndarray.mean()
+        delta_ema_std = delta_ema_ndarray.std()
+
+        self.active_func_ids = [0, 1]  # TODO, update active function id
+
+    def _state_get_avg_pinned_container_per_core_per_type(self) -> list[float]:
+        # get the average number of pinned container per core per type (NOTE,in simulator, we use "num_free_core" which is not
+        # enough as it can not capture the multiple-pinning case) should be call after state update rpc
+        total_container_pinned = [0] * len(self.server_types)
+        total_num_core = [0] * len(self.server_types)
+        for invoker in self.id_2_invoker.values():
+            idx = self.serverType_2_index[invoker.type]
+            total_container_pinned[idx] += invoker.get_total_core_pinning_count()
+            total_num_core[idx] += invoker.num_cores
+        return [total_pin / total_num_core for total_pin, total_num_core in zip(total_container_pinned, total_num_core)]
+
+    def _state_get_num_container_per_type(self, func_str: str) -> dict[str, tuple[int, int, int]]:
+        res_dict = {type_: (0, 0, 0) for type_ in self.server_types}  # (warm, warming, busy)
+        for invoker, set_container in self.func_2_warminfo[func_str].items():
+            res_dict[invoker.type][0] += len(set_container)
+        for invoker, set_container in self.func_2_warminginfo[func_str].items():
+            res_dict[invoker.type][1] += len(set_container)
+        for invoker, set_container in self.func_2_busyinfo[func_str].items():
+            res_dict[invoker.type][2] += len(set_container)
+        return res_dict
+
     def get_sla_latency_for_reward(self):
         pass
 
@@ -342,12 +383,39 @@ class Cluster:
     def get_obs(self):
         arrival_info: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
         self.select_from_all_state(arrival_info.func_2_arrivalEma)
-
-    def register_func(self, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
+        nn_state = []
+        cluster_state = []  # not tired to a specific function
+        core_avg_pinned: list[
+            float] = self._state_get_avg_pinned_container_per_core_per_type()  # [serverType1Res, SererType2Res]
+        cluster_state.append(core_avg_pinned)
+        for func_id in self.active_func_ids:
+            func_str = self.intId_2_funcStrName[func_id]
+            func: Func = self.strId_2_funcs[func_str]
+            func_state_vec = [arrival_info.query_count_1s[func_str],
+                              arrival_info.query_count_3s[func_str],
+                              func.cpu_req,
+                              func.mem_req,
+                              arrival_info.func_2_arrivalEma[func_str]
+                              ]
+            container_per_type_dict = self._state_get_num_container_per_type(func_str)
+            for type_ in self.server_types:
+                func_state_vec.append(container_per_type_dict[type_][1])  # warming count
+                func_state_vec.append(
+                    container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
+                #TODO, rethink the scale and cap's effect, rethink whey this feature is important
+                func_state_vec.append(func.sla - func.invokerType_2_referenceExecTime[type_]) # sla-referenceExecTime_ThisType
+            nn_state.append(func_state_vec)
+        nn_state.append(cluster_state)
+        nn_state = np.concatenate(nn_state,dtype=np.float32).flatten()
+        if self.do_state_clip:
+            return np.clip(nn_state, -self.state_clip_value, self.state_clip_value)
+        else:
+            return nn_state
+    def register_func(self, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
         # TODO, register into the openwhisk system, via openwhisk CLI
         func_id = self.func_id_counter
         self.strId_2_funcs[name] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
-                                        cpu_req=cpu_req,
+                                        cpu_req=cpu_req, sla = sla,
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.intId_2_funcStrName[func_id] = name
         self.funcname_2_id[name] = func_id
