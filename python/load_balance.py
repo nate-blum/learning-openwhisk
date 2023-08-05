@@ -12,23 +12,25 @@ from threading import Lock, Thread
 from multiprocessing import Queue
 from environment import Invoker
 
-
 class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
-    TIMER_INTERVAL_SEC = 0.1
+    # TODO, past from parameter
+    TIMER_INTERVAL_SEC = 0.2
+    ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9) # 120second, 2 minute, in nanosecond
+    EMA_TIME_WINDOW_NSEC = 60_000_000_000 # 1min in nanosecond
+    BUCKET_NSEC = 2_000_000_000 # 2 second in nanosecond
+    ARRIVAL_EMA_COEFF = 0.4
+
 
     def __init__(self, default_server_type: str):
         self.DEFAULT_SERVER_TYPE = default_server_type
         # might be accessed from multiple thread
-        self.func_2_arrivalQueue1Sec = defaultdict(
-            deque)  # deque's append operation is thread-safe, but we still use lock
-        self.func_2_arrivalQueue3Sec = defaultdict(deque)
+        self.func_2_arrivalQueue:defaultdict[str, deque] = defaultdict(deque)  # deque's append operation is thread-safe, but we still use lock
 
         self.func_2_containerSumList: Dict[str, List[int]] = {}
         self.func_2_invokerId: Dict[str, List[int]] = {}  # pair with the above
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_routing_info = Lock()
-        self.lock_1sec = Lock()
-        self.lock_3sec = Lock()
+        self.lock_arrival_q = Lock()
 
         self.timer_update_arrival_info_thread = Thread(target=self._threaded_update_arrival_queue,
                                                        args=(self.TIMER_INTERVAL_SEC,), daemon=True)
@@ -50,12 +52,10 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             return 0
 
     def GetInvocationRoute(self, request:routing_pb2.GetInvocationRouteRequest, context):
-        t = time_ns()
         func_id = request.actionName
-        with self.lock_1sec:
-            self.func_2_arrivalQueue1Sec[func_id].append(t)  # NOTE, should be thread-safe
-        with self.lock_3sec:
-            self.func_2_arrivalQueue3Sec[func_id].append(t)
+        t = time_ns()
+        with self.lock_arrival_q:
+            self.func_2_arrivalQueue[func_id].appendleft(t)  # NOTE, should be thread-safe
         res = self._select_invoker_to_dispatch(func_id)
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
     def NotifyClusterInfo(self, request:routing_pb2.NotifyClusterInfoRequest, context):
@@ -67,38 +67,53 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         return routing_pb2.NotifyClusterInfoResponse()
 
     def _threaded_update_arrival_queue(self, interval_sec):
-        # update the shared arrival queue in a separated thread, so that when the rpc is called, there won't too much
-        # work to do
+        # update the shared arrival queue in a separated thread, so that its length is maintained
         while True:
             curr_time_ns = time_ns()
-            with self.lock_1sec:
-                for func_id, arrival_deque in self.func_2_arrivalQueue1Sec.items():
-                    while len(arrival_deque) and curr_time_ns - arrival_deque[0] > 1e9:
-                        arrival_deque.popleft()
-            with self.lock_3sec:
-                for func_id, arrival_deque in self.func_2_arrivalQueue3Sec.items():
-                    while len(arrival_deque) and curr_time_ns - arrival_deque[0] > 3e9:
-                        arrival_deque.popleft()
-            time.sleep(interval_sec)  # every 100 millisecond
+            with self.lock_arrival_q:
+                for func_id, arrival_deque in self.func_2_arrivalQueue.items():
+                    while len(arrival_deque) and curr_time_ns - arrival_deque[-1] > self.ARRIVAL_Q_TIME_RANGE_LIMIT:
+                        arrival_deque.pop()
+            time.sleep(interval_sec)
 
     def GetArrivalInfo(self, request, context):
         # call by the agent to collect arrival info, this won't lock a lot of time as the background helper thread
         res_1s = {}
         res_3s = {}
         curr_time_ns = time_ns()
-        with self.lock_1sec:
-            for func_id, arrival_deque in self.func_2_arrivalQueue1Sec.items():
-                while len(arrival_deque) and curr_time_ns - arrival_deque[0] > 1e9:
-                    arrival_deque.popleft()
-                res_1s[func_id] = len(arrival_deque)
-        curr_time_ns = time_ns()
-        with self.lock_3sec:
-            for func_id, arrival_deque in self.func_2_arrivalQueue3Sec.items():
-                while len(arrival_deque) and curr_time_ns - arrival_deque[0] > 3e9:
-                    arrival_deque.popleft()
-                res_3s[func_id] = len(arrival_deque)
-        return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s)
-
+        with self.lock_arrival_q:
+            for func_id, arrival_deque in self.func_2_arrivalQueue.items():
+                counter_1s = 0
+                counter_23s = 0
+                for item in arrival_deque:
+                    delta = curr_time_ns - item
+                    if  delta <= 1_000_000_000:
+                        counter_1s +=1
+                    elif 1_000_000_000 < delta <= 3_000_000_000:
+                        counter_23s +=1
+                    else:
+                        break
+                res_1s[func_id] = counter_1s
+                res_3s[func_id] = counter_1s + counter_23s
+        with self.lock_arrival_q: # do not put all the computation under one-time lock (locking too long time is not good)
+            res = {}
+            num_buckets = self.EMA_TIME_WINDOW_NSEC // self.BUCKET_NSEC
+            curr_time_ns = time_ns()
+            for func_id, arrival_deque in self.func_2_arrivalQueue.items():
+                delta = [0] * num_buckets
+                for t in arrival_deque:
+                    bucket_index = (curr_time_ns - t ) // self.BUCKET_NSEC
+                    if bucket_index < num_buckets:
+                        delta[bucket_index] +=1
+                    else:
+                        break
+                most_recent_bucket_arrival= delta[0] # for normalization
+                delta = [delta[i] - delta[i+1] for i in range(num_buckets-1)] # compute the real delta, len = num_buckets -1
+                ema = delta[num_buckets - 2]  # last element
+                for i in reversed(range(num_buckets-2)): # from [num_buckets-3 to 0]
+                    ema = self.ARRIVAL_EMA_COEFF * delta[i] + (1 - self.ARRIVAL_EMA_COEFF) * ema
+                res[func_id] = ema / (most_recent_bucket_arrival + 1e-6)
+        return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s,func_2_arrivalEma=res)
 
 def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,
                                      default_svr_type: str):

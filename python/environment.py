@@ -16,6 +16,7 @@ from controller_server import clusterstate_pb2, clusterstate_pb2_grpc, routing_p
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
 from reward import compute_reward_using_overall_stat
 from grpc_reflection.v1alpha import reflection
+from google.protobuf.internal.containers import ScalarMap
 
 import training_configs  # training config
 import config  # cluster environment config
@@ -120,10 +121,10 @@ class Cluster:
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
+        self.funcname_2_id = {}
 
         self.id_2_invoker: Dict[int, Invoker] = {}
         self.type_2_invoker: Dict[str, Set[Invoker]] = {}
-        # self.id_2_container: Dict[str, Container] = {}
 
         self.cluster_state_lock = Lock()
         self.func_2_warminfo: Dict[
@@ -139,14 +140,10 @@ class Cluster:
         self.server_types = []
         self.func_spec_dict = func_spec_dict
         self.all_func_ids = []
-        self.id_2_funcname = {}
-        self.funcname_2_id = {}
         self.actionRealizeCounter = ActionRealizeCounter()
         for name, spec in self.func_spec_dict.items():
             func_id = self.register_func(**spec)
             self.all_func_ids.append(func_id)
-            self.id_2_funcname[func_id] = name
-            self.funcname_2_id[name] = func_id
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
         self._initialization() # must start before the rpc server b/c rpc server use the invoker instances
@@ -226,13 +223,6 @@ class Cluster:
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
 
-    # def _reset_core_pinning(self):
-    #     for invoker in self.id_2_invoker.values():
-    #         for core in invoker.id_2_core.values():
-    #             core.num_pinned_container = 0
-
-
-
     def reset(self, seed=None, options=None):
         pass
 
@@ -286,7 +276,8 @@ class Cluster:
                 invoker_id = cand.invoker.id
                 if cand not in self.most_recent_killed_container_cache[invoker_id]:
                     # NOTE, (1) there is a small chance that the container id is reuse (2) here we must use container
-                    # str id instead of container object since the different object might represent the same physical container in this implementation
+                    # str id instead of container object since the different object might represent the same physical
+                    # container in this implementation
                     self.most_recent_killed_container_cache[invoker_id].append(cand.id)
                     host_invoker: Invoker = cand.invoker
                     host_invoker.rpc_delete_container(cand.id, self.strId_2_funcs[func_id_str].name)
@@ -340,22 +331,17 @@ class Cluster:
         return state, reward_dict, False, False, self.state_info
 
     # get the features of All function so that to choose the active working functions.
-    def select_from_all_state(self, time_window_size_millis: int, coeff: float, bucket_millis: int) -> None:
+    def select_from_all_state(self, ema_dict: ScalarMap[str, float]) -> None:
         pass
-
     def get_sla_latency_for_reward(self):
         pass
 
     def compute_utilization(self) -> Dict:
         pass
 
-    def _rpc_get_arrival_info(self) -> tuple[dict[int, int], dict[int, int]]:
-        # get the arrival info from a rpc call to the routing rpc server
-        response: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
-        return response.query_count_1s, response.query_count_3s
-
     def get_obs(self):
-        pass
+        arrival_info: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
+        self.select_from_all_state(arrival_info.func_2_arrivalEma)
 
     def register_func(self, namesp, name, mem_req, cpu_req, invoker_2_referenceExecTime):
         # TODO, register into the openwhisk system, via openwhisk CLI
@@ -364,6 +350,7 @@ class Cluster:
                                         cpu_req=cpu_req,
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.intId_2_funcStrName[func_id] = name
+        self.funcname_2_id[name] = func_id
         self.func_2_warminfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
         self.func_2_busyinfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
         self.func_2_warminginfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
