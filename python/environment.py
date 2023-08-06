@@ -1,5 +1,6 @@
 import sys
 import logging
+import time
 from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
 from operator import itemgetter
 import grpc
@@ -22,6 +23,7 @@ import training_configs  # training config
 import config  # cluster environment config
 from load_balance import start_rpc_routing_server_process
 from state_collector import WskClusterInfoCollector
+from power import PDU_reader
 
 
 class Core:
@@ -108,10 +110,11 @@ class Func:
         self.mem_req = mem_req
         self.cpu_req = cpu_req
         self.sla = sla
-        self.invokerType_2_referenceExecTime:dict[str, int] = invoker_2_referenceExecTime
+        self.invokerType_2_referenceExecTime: dict[str, int] = invoker_2_referenceExecTime
 
 
 class Cluster:
+    SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
     SERVER_RPC_THREAD_COUNT = 8  # for routing
     SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
     RPC_SERVER_PORT = ""  # RPC server port, routing server
@@ -125,8 +128,11 @@ class Cluster:
     SERVER_POWER_SPECS = config.server_power_specs
     RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
     DEFAULT_SERVER_TYPE = config.default_svr_type
-    do_state_clip:bool = training_configs.NN['state_clip']
+    do_state_clip: bool = training_configs.NN['state_clip']
     state_clip_value = 2000
+    PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
+    PDU_OUTLET_LST = [21, 22]
+    PDU_SAMPLE_INTERVAL = 0.4
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
         self.setup_logging()
@@ -159,6 +165,8 @@ class Cluster:
             self.all_func_ids.append(func_id)
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
+        self.cluster_peak_pw = None
+
         self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
@@ -179,6 +187,9 @@ class Cluster:
             reflection.SERVICE_NAME, self.cluster_info_update_server)
         self.cluster_info_update_server.add_insecure_port(f"[::]:{self.RPC_SERVER_PORT_CLUSTER_UPDATE}")
         self.cluster_info_update_server.start()
+        # ----------------------------PUD thread--------------------------------------------
+        self.pdu = PDU_reader(self.PDU_HOST, self.PDU_OUTLET_LST, self.PDU_SAMPLE_INTERVAL)
+        self.pdu.start_thread()
 
     def setup_logging(self):
         # file handler
@@ -200,9 +211,11 @@ class Cluster:
     def _initialization(self):
         # instantiate Invoker instances, the invoker instance will initialize the Core object
         invoker_id_counter = 0
+        cluster_peak = 0
         for _type, spec_map_lst in self.cluster_spec_dict:
             self.server_types.append(_type)
             for spec in spec_map_lst:
+                cluster_peak += self.SERVER_POWER_SPECS[_type]['peak']
                 self.id_2_invoker[invoker_id_counter] = Invoker(invoker_id_counter, spec['host'], _type,
                                                                 spec['mem_capacity'], spec['num_cores'],
                                                                 {i: {'id': i, 'max_freq': spec['max_freq'],
@@ -215,6 +228,7 @@ class Cluster:
                     self.type_2_invoker[_type] = set()
                 self.type_2_invoker[_type].add(self.id_2_invoker[invoker_id_counter])
                 invoker_id_counter += 1
+        self.cluster_peak_pw = cluster_peak
         for i, _type in enumerate(self.server_types):
             self.serverType_2_index[_type] = i
         self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
@@ -335,14 +349,16 @@ class Cluster:
 
     def step(self, action: np.ndarray):
         mapped_action: Dict[int, Action] = self._map_action(action)
+        self.pdu.clear_samples()  # clear sample just before taking action
         self.take_action(mapped_action)
-        sla_latency = self.get_sla_latency_for_reward()  # contain all function, not jut active function
-        type_2_utilizations = self.compute_utilization()
-        reward_dict = compute_reward_using_overall_stat(type_2_utilizations=type_2_utilizations,
-                                                        func_2_latencies=sla_latency,
-                                                        server_power_specs=self.SERVER_POWER_SPECS,
-                                                        latency_factor=self.RATIO_BASED_LATENCY_FACTOR)
+        time.sleep(self.SLOT_DURATION)  # NOTE, do not consider system process latency
+
         state = self.get_obs()
+        sla_latency = self.get_sla_latency_for_reward()  # contain all function, not jut active function
+        reward_dict = compute_reward_using_overall_stat(get_power=self.pdu.get_average_power,
+                                                        func_2_latencies=sla_latency,
+                                                        cluster_peak_pw=self.cluster_peak_pw,
+                                                        latency_factor=self.RATIO_BASED_LATENCY_FACTOR)
         return state, reward_dict, False, False, self.state_info
 
     # get the features of All function so that to choose the active working functions.
@@ -402,20 +418,22 @@ class Cluster:
                 func_state_vec.append(container_per_type_dict[type_][1])  # warming count
                 func_state_vec.append(
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
-                #TODO, rethink the scale and cap's effect, rethink whey this feature is important
-                func_state_vec.append(func.sla - func.invokerType_2_referenceExecTime[type_]) # sla-referenceExecTime_ThisType
+                # TODO, rethink the scale and cap's effect, rethink whey this feature is important
+                func_state_vec.append(
+                    func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
-        nn_state = np.concatenate(nn_state,dtype=np.float32).flatten()
+        nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
         if self.do_state_clip:
             return np.clip(nn_state, -self.state_clip_value, self.state_clip_value)
         else:
             return nn_state
+
     def register_func(self, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
         # TODO, register into the openwhisk system, via openwhisk CLI
         func_id = self.func_id_counter
         self.strId_2_funcs[name] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
-                                        cpu_req=cpu_req, sla = sla,
+                                        cpu_req=cpu_req, sla=sla,
                                         invoker_2_referenceExecTime=invoker_2_referenceExecTime)
         self.intId_2_funcStrName[func_id] = name
         self.funcname_2_id[name] = func_id
