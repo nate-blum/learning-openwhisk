@@ -78,6 +78,7 @@ final case class InvokerInfo(buffer: RingBuffer[InvocationFinishedResult])
 class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef,
                   sendActivationToInvoker: (ActivationMessage, InvokerInstanceId) => Future[ResultMetadata],
                   pingConsumer: MessageConsumer,
+                  lbConfig: RPCHeuristicLoadBalancerConfig,
                   monitor: Option[ActorRef])
     extends Actor {
 
@@ -123,6 +124,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
 
       val aSPI = convertActionStatesToActionStatePerInvoker(p.actionStates)
       invokerClusterState.update(p.instance.toInt, aSPI)
+      if (lbConfig.sendAllUpdateRequests) logStatus()
 
       invoker.forward(p)
 
@@ -252,8 +254,9 @@ object InvokerPool {
   def props(f: (ActorRefFactory, InvokerInstanceId) => ActorRef,
             p: (ActivationMessage, InvokerInstanceId) => Future[ResultMetadata],
             pc: MessageConsumer,
+            lb: RPCHeuristicLoadBalancerConfig,
             m: Option[ActorRef] = None): Props = {
-    Props(new InvokerPool(f, p, pc, m))
+    Props(new InvokerPool(f, p, pc, lb, m))
   }
 
   /** A stub identity for invoking the test action. This does not need to be a valid identity. */

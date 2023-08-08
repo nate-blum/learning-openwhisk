@@ -18,6 +18,7 @@
 package org.apache.openwhisk.core.loadBalancer
 import akka.actor.ActorRef
 import akka.actor.ActorRefFactory
+import io.grpc.internal.ServiceConfigUtil.LbConfig
 import org.apache.openwhisk.core.connector.{ActivationMessage, MessageProducer, MessagingProvider, ResultMetadata}
 import org.apache.openwhisk.core.entity.InvokerInstanceId
 
@@ -29,5 +30,6 @@ trait InvokerPoolFactory {
     messagingProvider: MessagingProvider,
     messagingProducer: MessageProducer,
     sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[ResultMetadata],
+    lbConfig: RPCHeuristicLoadBalancerConfig,
     monitor: Option[ActorRef]): ActorRef
 }

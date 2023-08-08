@@ -186,6 +186,7 @@ class RPCHeuristicLoadBalancer(
       messagingProvider,
       messageProducer,
       sendActivationToInvoker,
+      lbConfig,
       Some(monitor))
 
   override protected def releaseInvoker(invoker: InvokerInstanceId, entry: ActivationEntry) = {
@@ -205,6 +206,7 @@ object RPCHeuristicLoadBalancer extends LoadBalancerProvider {
                                       messagingProvider: MessagingProvider,
                                       messagingProducer: MessageProducer,
                                       sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[ResultMetadata],
+                                      lbConfig: RPCHeuristicLoadBalancerConfig,
                                       monitor: Option[ActorRef]): ActorRef = {
 
         InvokerPool.prepare(instance, WhiskEntityStore.datastore())
@@ -218,6 +220,7 @@ object RPCHeuristicLoadBalancer extends LoadBalancerProvider {
               s"${Controller.topicPrefix}health${instance.asString}",
               s"${Controller.topicPrefix}health",
               maxPeek = 128),
+            lbConfig,
             monitor))
       }
 
