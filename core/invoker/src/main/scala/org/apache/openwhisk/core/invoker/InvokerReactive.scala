@@ -342,7 +342,8 @@ class InvokerReactive(
 
   private def pingController(isEnabled: Boolean) = {
     implicit val timeout: Timeout = 10.seconds
-    val actionStates: ActionStatePerInvoker = Await.result(pool ? GetActionStates(), timeout.duration).asInstanceOf[ActionStatePerInvoker]
+    val actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long) = Await.result(pool ? GetActionStates(), timeout.duration)
+      .asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)]
     healthProducer.send(s"${Invoker.topicPrefix}health", PingMessage(instance, actionStates, isEnabled = Some(isEnabled))).andThen {
       case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
     }
