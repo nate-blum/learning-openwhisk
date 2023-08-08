@@ -23,7 +23,7 @@ coverage_logs_dir: "{{ openwhisk_tmp_dir }}/wskcov"
 docker_registry: "openwhisk-vm1-he-de.apache.org:444/"
 docker_dns: ""
 runtimes_bypass_pull_for_local_images: true
-invoker_use_runc: false
+invoker_use_runc: true
 
 db_prefix: whisk_local_
 
@@ -52,4 +52,4 @@ limit_action_concurrency_max: 500
 namespace_default_limit_action_concurrency_max: 500
 
 invoker1_machine: openwhisk-vm3-he-de
-invoker_use_runc: false
+invoker_use_runc: true

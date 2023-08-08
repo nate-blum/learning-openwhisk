@@ -21,7 +21,7 @@ whisk_logs_dir: "{{ openwhisk_tmp_dir }}/wsklogs"
 docker_registry: ""
 docker_dns: ""
 runtimes_bypass_pull_for_local_images: true
-invoker_use_runc: false
+invoker_use_runc: true
 
 db_prefix: whisk_local_
 
@@ -47,4 +47,4 @@ controller_protocol: "http"
 
 cli_installation_mode: "remote"
 
-invoker_use_runc: false
+invoker_use_runc: true
