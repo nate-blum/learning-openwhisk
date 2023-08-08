@@ -2,6 +2,7 @@ import sys
 import logging
 import time
 from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
+from collections.abc import Iterable
 from operator import itemgetter
 import grpc
 import numpy as np
@@ -117,7 +118,7 @@ class Cluster:
     SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
     SERVER_RPC_THREAD_COUNT = 8  # for routing
     SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
-    RPC_SERVER_PORT = ""  # RPC server port, routing server
+    RPC_ROUTING_SERVER_PORT = ""  # RPC server port, routing server
     RPC_SERVER_PORT_CLUSTER_UPDATE = ""  # RPC server port, cluster state update
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
     ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
@@ -128,6 +129,11 @@ class Cluster:
     SERVER_POWER_SPECS = config.server_power_specs
     RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
     DEFAULT_SERVER_TYPE = config.default_svr_type
+    ARRIVAL_Q_TIMER_INTERVAL_SEC = 0.2
+    ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9)  # 120second, 2 minute, in nanosecond
+    EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond
+    ARRIVAL_EMA_BUCKET_NSEC = 2_000_000_000  # 2 second in nanosecond
+    ARRIVAL_EMA_COEFF = 0.4
     do_state_clip: bool = training_configs.NN['state_clip']
     state_clip_value = 2000
     PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
@@ -170,12 +176,15 @@ class Cluster:
         self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
-                                             args=(self.RPC_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
-                                                   self.DEFAULT_SERVER_TYPE))
+                                             args=(self.RPC_ROUTING_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
+                                                   self.DEFAULT_SERVER_TYPE, self.ARRIVAL_Q_TIMER_INTERVAL_SEC,
+                                                   self.ARRIVAL_Q_TIME_RANGE_LIMIT, self.EMA_TIME_WINDOW_NSEC,
+                                                   self.ARRIVAL_EMA_BUCKET_NSEC, self.ARRIVAL_EMA_COEFF,
+                                                   self.RPC_SERVER_PORT_CLUSTER_UPDATE))
         self.load_balancer_process.start()
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
         # state update server might use the stub for sending rpc request)-----------------------------------
-        self.routing_channel = grpc.insecure_channel(f'localhost:{self.RPC_SERVER_PORT}')
+        self.routing_channel = grpc.insecure_channel(f'localhost:{self.RPC_ROUTING_SERVER_PORT}')
         self.routing_stub = routing_pb2_grpc.RoutingServiceStub(self.routing_channel)  # channel is thread safe
         # -------------------Start Cluster Update RPC server--------------------------------------------
         self.cluster_info_update_server = grpc.server(
@@ -207,6 +216,10 @@ class Cluster:
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
+
+    def _check_healthy_on_each_step(self):
+        assert self.pdu.pdu_thread.is_alive(), "PDU thread dead!"
+        assert self.load_balancer_process.is_alive(), "Routing process dead!"
 
     def _initialization(self):
         # instantiate Invoker instances, the invoker instance will initialize the Core object
@@ -276,11 +289,11 @@ class Cluster:
         # print(action_cpp)
         return action_cpp
 
-    def _find_proper_invoker_to_place_container(self, candidate_set: Set[Invoker]) -> Invoker:
+    def find_proper_invoker_to_place_container(self, candidate_set: Iterable[Invoker]) -> Invoker:
         # prefer to put a container to the invoker with the least number of normalized container
         # the caller must make sure the candidate_set is not empty
-        candidate_lst = list(candidate_set)
-        score_lst = [0] * len(candidate_set)
+        candidate_lst: list[Invoker] = list(candidate_set)
+        score_lst: list[float] = [0] * len(candidate_lst)
         for i, invoker in enumerate(candidate_lst):
             score_lst[i] = invoker.get_total_num_container() / invoker.num_cores
         index_min = min(range(len(score_lst)), key=score_lst.__getitem__)
@@ -328,7 +341,7 @@ class Cluster:
         meet_all = candidates_pass_mem.intersection(candidates_pass_type, candidates_pass_load)
         select_invoker = None
         if meet_all:  # different from CPP, no relex here, check cpp code for detail
-            select_invoker = self._find_proper_invoker_to_place_container(meet_all)
+            select_invoker = self.find_proper_invoker_to_place_container(meet_all)
         if select_invoker:
             self.actionRealizeCounter.add_success += 1
             core_preference_lst = select_invoker.get_core_preference_list()

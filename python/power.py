@@ -16,7 +16,7 @@ class PDU_reader:
         self.sample_interval = sample_interval  # in second
         self.power_sample_lock = Lock()
         self.power_sample: list[float] = list()
-        self.pdu_thread = None
+        self.pdu_thread:Optional[Thread] = None
 
     def clear_samples(self):
         with self.power_sample_lock:
@@ -69,9 +69,9 @@ class PDU_reader:
 if __name__ == "__main__":
     import time
 
-    pdu = PDU_reader('panic-pdu-01.cs.rutgers.edu', [21, 22], 0.5)
+    pdu = PDU_reader('panic-pdu-01.cs.rutgers.edu', [15, 16], 0.5)
     begin = time.time()
     while time.time() - begin < 3:
         t = time.time()
-        res = pdu.query_pdu_active_energy()
-        print(time.time() - t, res)
+        res = pdu.query_pdu_active_power()
+        print(time.time(), res)
