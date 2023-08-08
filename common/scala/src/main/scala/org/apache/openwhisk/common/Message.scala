@@ -53,10 +53,12 @@ object ContainerListKeyJsonProtocol extends DefaultJsonProtocol {
     )
 
     def read(json: JsValue) = {
-      case JsString(x) =>
-        val split = x.split(",")
-        ContainerListKey(split.init.mkString(""), split.last)
-      case x => deserializationError("Expected String as JsString, but got " + x)
+      json match {
+        case JsString(x) =>
+          val split = x.split(",")
+          ContainerListKey(split.init.mkString(""), split.last)
+        case x => deserializationError("Expected String as JsString, but got " + x)
+      }
     }
   }
 }
