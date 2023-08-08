@@ -2,7 +2,8 @@
 
 from controller_server import clusterstate_pb2
 from controller_server import clusterstate_pb2_grpc, routing_pb2
-from controller_server.clusterstate_pb2 import UpdateClusterStateRequest
+from controller_server.clusterstate_pb2 import UpdateClusterStateRequest, GetRoutingColdStartRequest, \
+    GetRoutingColdStartResponse
 from environment import Cluster, Container
 
 
@@ -52,7 +53,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         func_2_ContainerCounter = routing_pb2.NotifyClusterInfoRequest()
         for func_id_str in function_set:
             container_counter = routing_pb2.ContainerCounter()
-            for invk_id,invoker in self.cluster.id_2_invoker.keys():
+            for invk_id, invoker in self.cluster.id_2_invoker.keys():
                 total = len(self.cluster.func_2_busyinfo[func_id_str][invoker]) + len(
                     self.cluster.func_2_warminfo[func_id_str][invoker]) + len(
                     self.cluster.func_2_warminginfo[func_id_str][invoker])
@@ -61,3 +62,23 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     container_counter.invokerId.append(invk_id)
             func_2_ContainerCounter.func_2_ContainerCounter[func_id_str] = container_counter
         self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
+
+    def GetRoutingColdStart(self, request: GetRoutingColdStartRequest, context):
+        # get all invokers whose memory is enough and the type match default type, if exist find a proper one
+        # get all invoker whose memory is enough, if exist find a proper one
+        # No invoker has enough memory
+        func_str = request.func_str
+        mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
+        with self.cluster.cluster_state_lock:
+            invoker_meet_mem = [invoker for invoker in self.cluster.id_2_invoker.values() if invoker.free_mem > mem_req]
+            if invoker_meet_mem:
+                invoker_of_default_type = [invoker for invoker in invoker_meet_mem if
+                                           invoker.type == self.cluster.DEFAULT_SERVER_TYPE]
+                if invoker_of_default_type:
+                    res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_of_default_type).id
+                else:
+                    res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_meet_mem).id
+            else:
+                # TODO, how to handle, how the invoker handle cold start when there is not enough resource
+                res_invoker = 0
+        return GetRoutingColdStartResponse(invoker_selected=res_invoker)
