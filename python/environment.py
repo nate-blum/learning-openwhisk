@@ -13,6 +13,7 @@ from collections import deque
 from itertools import chain
 from bisect import bisect
 from invoker_client import invoker_pb2 as invoker_types
+from invoker_client.invoker_pb2 import DeleteContainerWithIdRequest, SuccessResponse
 from invoker_client import invoker_pb2_grpc as invoker_service
 from controller_server import clusterstate_pb2, clusterstate_pb2_grpc, routing_pb2_grpc, routing_pb2
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
@@ -64,8 +65,8 @@ class Invoker:
         }))
 
     def rpc_delete_container(self, container_id: str, func_name: str):
-        # TODO, enable specifying the container id to delete
-        self.stub.DeleteContainer(invoker_types.DeleteContainerRequest(actionName=func_name))
+        #TODO, how the Success Response is determined from Scala runtime
+        response:SuccessResponse = self.stub.DeleteContainerWithId(DeleteContainerWithIdRequest(containerId=container_id))
 
     def is_all_core_pinned_to_uplimit(self):
         res = True
@@ -174,6 +175,7 @@ class Cluster:
         self.cluster_peak_pw = None
 
         self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances
+        #TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
                                              args=(self.RPC_ROUTING_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,

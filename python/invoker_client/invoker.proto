@@ -25,12 +25,22 @@ option java_outer_classname = "InvokerProto";
 package invoker;
 
 service InvokerService {
-  rpc NewWarmedContainer (NewWarmedContainerRequest) returns (NewWarmedContainerResponse) {}
+  rpc NewWarmedContainer (NewWarmedContainerRequest) returns (SuccessResponse) {}
 
-  rpc DeleteContainer (DeleteContainerRequest) returns (DeleteContainerResponse) {}
+  rpc DeleteRandomContainer (DeleteRandomContainerRequest) returns (SuccessResponse) {}
 
-  rpc SetAllowOpenWhiskToFreeMemory (SetAllowOpenWhiskToFreeMemoryRequest) returns (SetAllowOpenWhiskToFreeMemoryResponse) {}
+  rpc DeleteContainerWithId (DeleteContainerWithIdRequest) returns (SuccessResponse) {}
+
+  rpc SetAllowOpenWhiskToFreeMemory (SetAllowOpenWhiskToFreeMemoryRequest) returns (SuccessResponse) {}
+
+  rpc ResetInvoker (ResetInvokerRequest) returns (SuccessResponse) {}
 }
+
+message SuccessResponse {
+  bool success = 1;
+}
+
+message ResetInvokerRequest {}
 
 // currently supported params:
 // pin -> core pin string
@@ -39,22 +49,14 @@ message NewWarmedContainerRequest {
   map<string, string> params = 2;
 }
 
-message NewWarmedContainerResponse {
-  bool success = 1;
-}
-
-message DeleteContainerRequest {
+message DeleteRandomContainerRequest {
   string actionName = 1;
 }
 
-message DeleteContainerResponse {
-  bool success = 1;
+message DeleteContainerWithIdRequest {
+  string containerId = 1;
 }
 
 message SetAllowOpenWhiskToFreeMemoryRequest {
   bool setValue = 1;
-}
-
-message SetAllowOpenWhiskToFreeMemoryResponse {
-  bool success = 1;
 }
