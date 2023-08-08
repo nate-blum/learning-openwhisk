@@ -47,7 +47,7 @@ object InvokerState {
 
 case class ContainerListKey(actionName: String, state: String)
 object ContainerListKeyJsonProtocol extends DefaultJsonProtocol {
-  implicit object ProductItemFormat extends RootJsonFormat[ContainerListKey] {
+  implicit object ContainerListKeyFormat extends RootJsonFormat[ContainerListKey] {
     def write(key: ContainerListKey) = JsString(
       s"${key.actionName},${key.state}"
     )
