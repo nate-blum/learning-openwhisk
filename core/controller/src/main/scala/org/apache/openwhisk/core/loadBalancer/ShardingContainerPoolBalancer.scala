@@ -322,6 +322,7 @@ class ShardingContainerPoolBalancer(
       messagingProvider,
       messageProducer,
       sendActivationToInvoker,
+      lbConfig,
       Some(monitor))
 
   override protected def releaseInvoker(invoker: InvokerInstanceId, entry: ActivationEntry) = {
@@ -342,6 +343,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
         messagingProvider: MessagingProvider,
         messagingProducer: MessageProducer,
         sendActivationToInvoker: (MessageProducer, ActivationMessage, InvokerInstanceId) => Future[ResultMetadata],
+        lbConfig: RPCHeuristicLoadBalancerConfig,
         monitor: Option[ActorRef]): ActorRef = {
 
         InvokerPool.prepare(instance, WhiskEntityStore.datastore())
@@ -355,6 +357,7 @@ object ShardingContainerPoolBalancer extends LoadBalancerProvider {
               s"${Controller.topicPrefix}health${instance.asString}",
               s"${Controller.topicPrefix}health",
               maxPeek = 128),
+            lbConfig,
             monitor))
       }
 
