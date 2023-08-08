@@ -20,8 +20,6 @@ package org.apache.openwhisk.common
 import org.apache.openwhisk.core.entity.InvokerInstanceId
 import spray.json._
 
-import scala.collection.mutable
-
 case object GracefulShutdown
 case object Enable
 
