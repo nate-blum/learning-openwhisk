@@ -98,7 +98,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
   def convertActionStatesToActionStatePerInvoker(actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long)): ActionStatePerInvoker = {
     ActionStatePerInvoker(
       actionStates._1.map(_._1.actionName).toSet
-        .map(name => name -> ActionState(
+        .map((name: String) => name -> ActionState(
           actionStates._1.filter(_._1.actionName == name)
             .map(state => state._1.state -> ContainerList(
               state._2.map(c => RPCContainer(c._1, c._2)).toSeq
