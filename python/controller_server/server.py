@@ -17,7 +17,7 @@ class RoutingService(routing_service.RoutingServiceServicer):
         return routing_types.GetInvocationRouteResponse(invokerInstanceId=0)
 
     def RoutingUpdateClusterState(self, request, context):
-        print(f"[{datetime.strftime()}]" + request)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}]" + request)
         return clusterstate_types.UpdateClusterStateResponse()
 
 def main():
