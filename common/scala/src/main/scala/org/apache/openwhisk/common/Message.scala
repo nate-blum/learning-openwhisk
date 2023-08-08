@@ -47,7 +47,18 @@ object InvokerState {
 
 case class ContainerListKey(actionName: String, state: String)
 object ContainerListKeyJsonProtocol extends DefaultJsonProtocol {
-  implicit val containerListKeyFormat = jsonFormat2(ContainerListKey)
+  implicit object ProductItemFormat extends RootJsonFormat[ContainerListKey] {
+    def write(key: ContainerListKey) = JsString(
+      s"${key.actionName},${key.state}"
+    )
+
+    def read(json: JsValue) = {
+      case JsString(x) =>
+        val split = x.split(",")
+        ContainerListKey(split.init.mkString(""), split.last)
+      case x => deserializationError("Expected String as JsString, but got " + x)
+    }
+  }
 }
 
 /**
