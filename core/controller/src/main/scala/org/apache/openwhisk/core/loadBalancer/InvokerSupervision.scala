@@ -35,7 +35,7 @@ import org.apache.openwhisk.core.database.NoDocumentException
 import org.apache.openwhisk.core.entity.ActivationId.ActivationIdGenerator
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.types.EntityStore
-import org.apache.openwhisk.grpc.{ActionState, ActionStatePerInvoker, ContainerList, InvokerClusterState, RPCContainer}
+import org.apache.openwhisk.grpc.{ActionState, ActionStatePerInvoker, ContainerList, RPCContainer}
 
 // Received events
 case object GetStatus
