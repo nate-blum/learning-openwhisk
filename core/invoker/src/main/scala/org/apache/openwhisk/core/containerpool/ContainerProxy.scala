@@ -396,10 +396,10 @@ class ContainerProxy(factory: (TransactionId,
         .pipeTo(self)
       stay
 
-    case Event(WarmCompleted(data: WarmedData), _) =>
+    case Event(w: WarmCompleted, _) =>
       logging.info(this, s"warm completed, took ${Duration.between(rpcCreationStartTime, Instant.now()).toMillis}ms")
-      context.parent ! NeedWork(data)
-      goto(Ready) using data
+      context.parent ! w
+      goto(Ready) using w.data
 
     // container creation failed
     case Event(_: FailureMessage, _) =>
