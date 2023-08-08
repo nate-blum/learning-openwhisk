@@ -145,7 +145,7 @@ class RPCHeuristicLoadBalancer(
 
     val invoker: Option[InvokerInstanceId] = client.executeRoutingRequest(action.name.name)
       .map(id =>
-        schedulingState.invokers.find(_.id.instance == id.invokerInstanceId).map(_.id).get)
+        schedulingState.invokers.find(_.id.instance == id.invokerInstanceId).map(_.id).getOrElse(None))
     logging.info(this, if (invoker.isDefined) s"found invoker ${invoker.get}" else "no invoker found")
 
     invoker map {
