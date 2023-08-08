@@ -5,6 +5,7 @@ from concurrent import futures
 
 import grpc
 import routing_pb2 as routing_types
+import clusterstate_pb2 as clusterstate_types
 import routing_pb2_grpc as routing_service
 from grpc_reflection.v1alpha import reflection
 
@@ -16,7 +17,7 @@ class RoutingService(routing_service.RoutingServiceServicer):
 
     def RoutingUpdateClusterState(self, request, context):
         print(request)
-        return routing_types.RoutingUpdateClusterStateResponse(success=True)
+        return clusterstate_types.RoutingUpdateClusterStateResponse(success=True)
 
 def main():
     opts, args = getopt.getopt(sys.argv[1:], 'p:')
