@@ -2,6 +2,7 @@ import getopt
 import logging
 import sys
 from concurrent import futures
+import datetime
 
 import grpc
 import routing_pb2 as routing_types
@@ -16,7 +17,7 @@ class RoutingService(routing_service.RoutingServiceServicer):
         return routing_types.GetInvocationRouteResponse(invokerInstanceId=0)
 
     def RoutingUpdateClusterState(self, request, context):
-        print(request)
+        print(f"[{datetime.strftime()}]" + request)
         return clusterstate_types.UpdateClusterStateResponse()
 
 def main():
