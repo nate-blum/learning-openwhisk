@@ -17,7 +17,7 @@ class RoutingService(routing_service.RoutingServiceServicer):
 
     def RoutingUpdateClusterState(self, request, context):
         print(request)
-        return clusterstate_types.RoutingUpdateClusterStateResponse(success=True)
+        return clusterstate_types.UpdateClusterStateResponse(success=True)
 
 def main():
     opts, args = getopt.getopt(sys.argv[1:], 'p:')

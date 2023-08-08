@@ -143,7 +143,9 @@ class RPCHeuristicLoadBalancer(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     println(lbConfig)
 
-    val invoker: Option[InvokerInstanceId] = schedulingState.invokers.find(_.id.instance == client.executeRoutingRequest(action.name.name).invokerInstanceId).map(_.id)
+    val invoker: Option[InvokerInstanceId] = client.executeRoutingRequest(action.name.name)
+      .map(id =>
+        schedulingState.invokers.find(_.id.instance == id.invokerInstanceId).map(_.id).get)
     logging.info(this, if (invoker.isDefined) s"found invoker ${invoker.get}" else "no invoker found")
 
     invoker map {
