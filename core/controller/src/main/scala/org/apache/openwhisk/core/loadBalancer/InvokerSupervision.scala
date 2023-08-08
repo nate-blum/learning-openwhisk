@@ -121,8 +121,8 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
         refToInstance = refToInstance.updated(invoker, p.instance)
       }
 
-//      val aSPI = convertActionStatesToActionStatePerInvoker(p.actionStates)
-//      invokerClusterState.update(p.instance.toInt, convertActionStatesToActionStatePerInvoker(p.actionStates))
+      val aSPI = convertActionStatesToActionStatePerInvoker(p.actionStates)
+      invokerClusterState.update(p.instance.toInt, aSPI)
 
       invoker.forward(p)
 
