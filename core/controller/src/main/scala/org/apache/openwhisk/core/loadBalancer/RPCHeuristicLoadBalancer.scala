@@ -36,7 +36,7 @@ import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
 import org.apache.openwhisk.core.loadBalancer.grpc.RoutingClient
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
-import org.apache.openwhisk.grpc.ActionStatePerInvoker
+import org.apache.openwhisk.grpc.{ActionStatePerInvoker, GetInvocationRouteResponse}
 import org.apache.openwhisk.spi.SpiLoader
 
 import scala.collection.mutable
@@ -143,9 +143,14 @@ class RPCHeuristicLoadBalancer(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     println(lbConfig)
 
-    val invoker: Option[InvokerInstanceId] = client.executeRoutingRequest(action.name.name)
-      .map(id =>
-        schedulingState.invokers.find(_.id.instance == id.invokerInstanceId).map(_.id).getOrElse(None))
+    val request: Option[GetInvocationRouteResponse] = client.executeRoutingRequest(action.name.name)
+    val invoker: Option[InvokerInstanceId] = request match {
+      case Some(v) =>
+        schedulingState.invokers.find(_.id.instance == v.invokerInstanceId).map(_.id)
+      case None =>
+        None
+    }
+
     logging.info(this, if (invoker.isDefined) s"found invoker ${invoker.get}" else "no invoker found")
 
     invoker map {
