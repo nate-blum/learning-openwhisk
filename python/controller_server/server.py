@@ -2,7 +2,7 @@ import getopt
 import logging
 import sys
 from concurrent import futures
-import datetime
+from datetime import datetime
 
 import grpc
 import routing_pb2 as routing_types
