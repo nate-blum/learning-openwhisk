@@ -40,7 +40,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                                 containers)  # update entirely instead of modification
                         case "free":
                             self.cluster.func_2_warminfo[func_id_str][invoker] = frozenset(containers)
-                        case "warming":
+                        case "warming": # warming containers all have the same "empty" id
                             self.cluster.func_2_warminginfo[func_id_str][invoker] = frozenset(containers)
                         case _:
                             assert False
@@ -56,7 +56,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
             for invk_id, invoker in self.cluster.id_2_invoker.keys():
                 total = len(self.cluster.func_2_busyinfo[func_id_str][invoker]) + len(
                     self.cluster.func_2_warminfo[func_id_str][invoker]) + len(
-                    self.cluster.func_2_warminginfo[func_id_str][invoker])
+                    self.cluster.func_2_warminginfo[func_id_str][invoker]) # it's okay the set of warming container all have empty id
                 if total > 0:  # zero container, skip
                     container_counter.count.append(total)
                     container_counter.invokerId.append(invk_id)

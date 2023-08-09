@@ -342,12 +342,14 @@ class Cluster:
         lst_warmset: List[frozenset[Container]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
                                                    invk.type == type]
         lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
-        lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
+        #lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
         lst_warm: List[Container] = [container for s in lst_warmset for container in s]  # flatten the list
         lst_busyset = [container for s in lst_busyset for container in s]
-        lst_warmingset = [container for s in lst_warmingset for container in s]
+        #lst_warmingset = [container for s in lst_warmingset for container in s]
         candidate_lst: List[Container] = list(
-            chain.from_iterable([lst_warm, lst_warmingset, lst_busyset]))  # flatten list of list
+            chain.from_iterable([lst_warm,
+                                 #lst_warmingset,  # warming container does not have an id
+                                 lst_busyset]))  # flatten list of list
         if candidate_lst:
             self.actionRealizeCounter.delete_success += 1
             # find the container that has the maximum number of sibling containers that pinns to its first core.
@@ -355,14 +357,14 @@ class Cluster:
                                reverse=True)  # stable sort
             for cand in candidate_lst:
                 invoker_id = cand.invoker.id
-                if cand not in self.most_recent_killed_container_cache[invoker_id]:
+                if cand.id not in self.most_recent_killed_container_cache[invoker_id]:
                     # NOTE, (1) there is a small chance that the container id is reuse (2) here we must use container
                     # str id instead of container object since the different object might represent the same physical
                     # container in this implementation
                     self.most_recent_killed_container_cache[invoker_id].append(cand.id)
                     host_invoker: Invoker = cand.invoker
                     host_invoker.rpc_delete_container(cand.id, self.strId_2_funcs[func_id_str].name)
-                    logging.info("Deleting container {} on invoker {}".format(cand, host_invoker.id))
+                    logging.info("Deleting container {} on invoker {}".format(cand.id, host_invoker.id))
                     return cand.id  # make sure only delete one
         return None  #
 
@@ -436,7 +438,7 @@ class Cluster:
         res_dict = {type_: (0, 0, 0) for type_ in self.server_types}  # (warm, warming, busy)
         for invoker, set_container in self.func_2_warminfo[func_str].items():
             res_dict[invoker.type][0] += len(set_container)
-        for invoker, set_container in self.func_2_warminginfo[func_str].items():
+        for invoker, set_container in self.func_2_warminginfo[func_str].items(): # okay is warming has no id
             res_dict[invoker.type][1] += len(set_container)
         for invoker, set_container in self.func_2_busyinfo[func_str].items():
             res_dict[invoker.type][2] += len(set_container)
