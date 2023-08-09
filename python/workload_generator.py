@@ -12,6 +12,8 @@ class WorkloadGenerator:
         self.trace_size = len(self.trace)
         self.ow_client = OpenwhiskClient(wsk_path)
         self.last_req_t = 0
+        #---------------------------------------
+        self.binary_data_cache = {}
 
 
     def generate_workload(self):
@@ -45,13 +47,24 @@ class WorkloadGenerator:
         mod_line = (self.line_pointer + self.trace_size) % self.trace_size
         func_name = self.trace.iloc[mod_line, 0]
         elapse_to_prev =  self.trace.iloc[mod_line,1]
+        data_file = self.trace.iloc[mod_line,2] # image data file
+        request_type = self.trace.iloc[mod_line, 2]
         if (diff := time() - self.last_req_t) <= elapse_to_prev / 1000: # assuming the interval in trace is in millisecond
             sleep(diff)
-        self.ow_client.invoke(action=func_name)
+        match request_type:
+            case "binary":
+                try:
+                    data = self.binary_data_cache[data_file]
+                except KeyError:
+                    data = open(data_file, "rb").read()
+                    self.binary_data_cache[data_file] = data
+                self.ow_client.invoke_binary_data(action=func_name, data=data)
+            case _:
+                pass
         self.last_req_t = time()
 
 
 
-def start_workload_process(q: Queue, start_pointer: int, trace_file: str):
-    workload_generator = WorkloadGenerator(q, start_pointer, trace_file)
+def start_workload_process(q: Queue, start_pointer: int, trace_file: str, wsk_path:str):
+    workload_generator = WorkloadGenerator(q, start_pointer, trace_file, wsk_path)
     workload_generator.generate_workload()  # blocking call

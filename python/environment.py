@@ -26,6 +26,36 @@ import config  # cluster environment config
 from load_balance import start_rpc_routing_server_process
 from state_collector import WskClusterInfoCollector
 from power import PDU_reader
+from workload_generator import start_workload_process
+
+signal_queue = Queue()  # sending signal to control workload generator's reset/start
+SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
+SERVER_RPC_THREAD_COUNT = 8  # for routing
+SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
+RPC_ROUTING_SERVER_PORT = ""  # RPC server port, routing server
+RPC_SERVER_PORT_CLUSTER_UPDATE = ""  # RPC server port, cluster state update
+NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
+ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
+TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
+SERVER_TYPE_LIST: List[str] = list(config.cluster_spec_dict.keys())
+CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT = bool(training_configs.params['consider_container_pinning_per_core_limit'])
+MOST_RECENT_KILLED_CONTAINER_SET_LIMIT = 10
+SERVER_POWER_SPECS = config.server_power_specs
+RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
+DEFAULT_SERVER_TYPE = config.default_svr_type
+ARRIVAL_Q_TIMER_INTERVAL_SEC = 0.2
+ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9)  # 120second, 2 minute, in nanosecond
+EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond
+ARRIVAL_EMA_BUCKET_NSEC = 2_000_000_000  # 2 second in nanosecond
+ARRIVAL_EMA_COEFF = 0.4
+do_state_clip: bool = training_configs.NN['state_clip']
+state_clip_value = 2000
+PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
+PDU_OUTLET_LST = [21, 22]
+PDU_SAMPLE_INTERVAL = 0.4
+WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
+WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
+WSK_PATH = "/local/kuozhang-local/nsf-backup/openwhisk/bin/wsk"
 
 
 class Core:
@@ -65,8 +95,9 @@ class Invoker:
         }))
 
     def rpc_delete_container(self, container_id: str, func_name: str):
-        #TODO, how the Success Response is determined from Scala runtime
-        response:SuccessResponse = self.stub.DeleteContainerWithId(DeleteContainerWithIdRequest(containerId=container_id))
+        # TODO, how the Success Response is determined from Scala runtime
+        response: SuccessResponse = self.stub.DeleteContainerWithId(
+            DeleteContainerWithIdRequest(containerId=container_id))
 
     def is_all_core_pinned_to_uplimit(self):
         res = True
@@ -140,6 +171,8 @@ class Cluster:
     PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
     PDU_OUTLET_LST = [21, 22]
     PDU_SAMPLE_INTERVAL = 0.4
+    WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
+    WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
         self.setup_logging()
@@ -175,15 +208,19 @@ class Cluster:
         self.cluster_peak_pw = None
 
         self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances
-        #TODO, what if the server is not up, but the rpc request has been sent ?
+        # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
-                                             args=(self.RPC_ROUTING_SERVER_PORT, self.SERVER_RPC_THREAD_COUNT,
-                                                   self.DEFAULT_SERVER_TYPE, self.ARRIVAL_Q_TIMER_INTERVAL_SEC,
-                                                   self.ARRIVAL_Q_TIME_RANGE_LIMIT, self.EMA_TIME_WINDOW_NSEC,
-                                                   self.ARRIVAL_EMA_BUCKET_NSEC, self.ARRIVAL_EMA_COEFF,
-                                                   self.RPC_SERVER_PORT_CLUSTER_UPDATE))
+                                             args=(RPC_ROUTING_SERVER_PORT, SERVER_RPC_THREAD_COUNT,
+                                                   DEFAULT_SERVER_TYPE, ARRIVAL_Q_TIMER_INTERVAL_SEC,
+                                                   ARRIVAL_Q_TIME_RANGE_LIMIT, EMA_TIME_WINDOW_NSEC,
+                                                   ARRIVAL_EMA_BUCKET_NSEC, ARRIVAL_EMA_COEFF,
+                                                   RPC_SERVER_PORT_CLUSTER_UPDATE), daemon=True)  # avoid self usage
         self.load_balancer_process.start()
+        # --------------------------------Start Worklaod Generation Process-----------------------------------
+        self.workload_generate_process = Process(target=start_workload_process,
+                                                 args=(signal_queue, WORKLOAD_START_POINTER, WORKLOAD_TRACE_FILE,
+                                                       WSK_PATH))
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
         # state update server might use the stub for sending rpc request)-----------------------------------
         self.routing_channel = grpc.insecure_channel(f'localhost:{self.RPC_ROUTING_SERVER_PORT}')
