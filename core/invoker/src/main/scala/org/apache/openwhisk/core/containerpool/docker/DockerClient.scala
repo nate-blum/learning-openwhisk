@@ -21,7 +21,6 @@ import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.concurrent.Semaphore
-
 import akka.actor.ActorSystem
 
 import scala.collection.concurrent.TrieMap
@@ -39,7 +38,7 @@ import org.apache.openwhisk.core.ConfigKeys
 import org.apache.openwhisk.core.containerpool.ContainerId
 import org.apache.openwhisk.core.containerpool.ContainerAddress
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, DurationInt}
 
 object DockerContainerId {
 
@@ -189,6 +188,10 @@ class DockerClient(dockerHost: Option[String] = None,
     runCmd(cmd, config.timeouts.ps).map(_.linesIterator.toSeq.map(ContainerId.apply))
   }
 
+  def stats(id: ContainerId)(implicit transid: TransactionId): Future[String] = {
+    runCmd(Seq("stats", id.asString), 10.millis)
+  }
+
   /**
    * Stores pulls that are currently being executed and collapses multiple
    * pulls into just one. After a pull is finished, the cached future is removed
@@ -284,6 +287,8 @@ trait DockerApi {
    */
   def ps(filters: Seq[(String, String)] = Seq.empty, all: Boolean = false)(
     implicit transid: TransactionId): Future[Seq[ContainerId]]
+
+  def stats(id: ContainerId)(implicit transid: TransactionId): Future[String]
 
   /**
    * Pulls the given image.
