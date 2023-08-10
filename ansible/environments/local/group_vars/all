@@ -58,7 +58,7 @@ controller_loadbalancer_blackbox_fraction:1.0
 
 
 
-kafka_heap: '8g' #
+kafka_heap: '8g'
 kafka_network_threads: 8
 
 invoker_heap: '8g'
