@@ -380,6 +380,8 @@ class ContainerProxy(factory: (TransactionId,
         .pipeTo(self)
 
       goto(Running)
+
+    case _ => delay
   }
 
   when(Starting) {

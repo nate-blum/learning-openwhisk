@@ -189,7 +189,7 @@ class DockerClient(dockerHost: Option[String] = None,
   }
 
   def stats(id: ContainerId)(implicit transid: TransactionId): Future[String] = {
-    runCmd(Seq("stats", id.asString), 10.millis)
+    runCmd(Seq("stats", id.asString), 1.second)
   }
 
   /**
