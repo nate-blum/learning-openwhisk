@@ -1,0 +1,15 @@
+- name: prepare the openwhisk cluster
+  hosts: invokers
+  tasks:
+    - name: save docker image for invoker
+      delegate_to: localhost
+      command: "docker save whisk/invoker -o {{local_tmp}}/invoker-image.tar"
+
+    - name: copy invoker image to the remote invoker
+      copy:
+          src: "{{local_tmp}}/invoker-image.tar"
+          dest: "{{remote_tmp}}"
+          mode: preserve
+
+    - name: load invoker image on remote invoker server
+      command: "docker load -i {{remote_tmp}}/invoker-image.tar"
