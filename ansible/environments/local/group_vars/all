@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-openwhisk_tmp_dir: "/local/nate-local/openwhisk"
+#openwhisk_tmp_dir: "/local/nate-local/openwhisk"
 config_root_dir: "{{ openwhisk_tmp_dir }}/wskconf"
 whisk_logs_dir: "{{ openwhisk_tmp_dir }}/wsklogs"
 coverage_enabled: "{{ lookup('env', 'GRADLE_COVERAGE') | default('false', true) | bool}}"
@@ -32,10 +32,9 @@ apigw_auth_user: ""
 apigw_auth_pwd: ""
 apigw_host_v2: "http://{{ groups['apigateway']|first }}:{{apigateway.port.api}}/v2"
 
-invoker_allow_multiple_instances: true
+# invoker_allow_multiple_instances: true # whether multiple invoker could be on the same node, default is false
 
 # Set kafka configuration
-kafka_heap: '512m'
 kafka_topics_completed_retentionBytes: 104857600
 kafka_topics_completed_retentionMS: 300000
 kafka_topics_health_retentionBytes: 104857600
@@ -44,13 +43,22 @@ kafka_topics_invoker_retentionBytes: 104857600
 kafka_topics_invoker_retentionMS: 300000
 
 env_hosts_dir: "{{ playbook_dir }}/environments/local"
-
-container_pool_akka_client: true
-runtimes_enable_concurrency: true
-limit_action_concurrency_max: 500
+#------------Custom Config Panic Lab---------------------------------
+#container_pool_akka_client: true
+#runtimes_enable_concurrency: true
+#limit_action_concurrency_max: 500
 namespace_default_limit_action_concurrency_max: 500
 
+controller_heap: '8g'
 
+kafka_heap: '8g' #
+kafka_network_threads: 8
 
+invoker_heap: '8g'
+invoker_user_memory: '40g'
 
-ansible_python_interpreter: /usr/bin/python3.10
+limit_invocations_per_minute: 6000
+limit_invocations_concurrent: 3000
+limit_fires_per_minute: 6000
+limit_sequence_max_length: 5000
+#ansible_python_interpreter: /usr/bin/python3.10
