@@ -53,10 +53,7 @@ controller_heap: '8g'
 controller_managed_fraction: 1.0
 controller_blackbox_fraction: 1.0
 controller_loadbalancer_managed_fraction: 1.0
-controller_loadbalancer_blackbox_fraction:1.0
-
-
-
+controller_loadbalancer_blackbox_fraction: 1.0
 
 kafka_heap: '8g'
 kafka_network_threads: 8
