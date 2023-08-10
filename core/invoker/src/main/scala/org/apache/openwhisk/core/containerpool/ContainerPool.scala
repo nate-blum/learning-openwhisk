@@ -191,7 +191,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case GetActionStates() =>
       sender() ! this.actionStates()
 
-    case ResetInvokerEvent =>
+    case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")
       //TODO: reset run buffer?
       List(freePool, busyPool, prewarmedPool, prewarmStartingPool, warmingPool)
