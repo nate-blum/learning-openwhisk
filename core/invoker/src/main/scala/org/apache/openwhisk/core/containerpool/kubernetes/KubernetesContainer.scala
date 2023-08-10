@@ -142,7 +142,7 @@ class KubernetesContainer(protected[core] val id: ContainerId,
   }
 
   override def stats()(implicit transid: TransactionId): Future[String] = {
-    super.stats()
+    Future.successful("")
   }
 
   override def initialize(initializer: JsObject,

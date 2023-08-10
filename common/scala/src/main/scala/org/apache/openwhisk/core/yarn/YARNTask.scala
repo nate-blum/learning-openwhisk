@@ -75,7 +75,7 @@ class YARNTask(override protected val id: ContainerId,
   }
 
   override def stats()(implicit transid: TransactionId): Future[String] = {
-    super.stats()
+    Future.successful("")
   }
 
   /**
