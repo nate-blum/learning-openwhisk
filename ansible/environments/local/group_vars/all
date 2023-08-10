@@ -50,6 +50,13 @@ env_hosts_dir: "{{ playbook_dir }}/environments/local"
 namespace_default_limit_action_concurrency_max: 500
 
 controller_heap: '8g'
+controller_managed_fraction: 1.0
+controller_blackbox_fraction: 1.0
+controller_loadbalancer_managed_fraction: 1.0
+controller_loadbalancer_blackbox_fraction:1.0
+
+
+
 
 kafka_heap: '8g' #
 kafka_network_threads: 8
