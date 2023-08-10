@@ -1,5 +1,6 @@
 # will run in the training agent process
 
+import logging
 from controller_server import clusterstate_pb2
 from controller_server import clusterstate_pb2_grpc, routing_pb2
 from controller_server.clusterstate_pb2 import UpdateClusterStateRequest, GetRoutingColdStartRequest, \
@@ -15,6 +16,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # container set get entirely updated on each call (override)
         # NOTE, must make sure every related data structure is updated properly
         # ({funcStr:ActionState}, freeMem(MB))
+        logging.info("Received state update RPC from OW controller")
         self.cluster.cluster_state_lock.acquire()
         assert list(request.clusterState.actionStatePerInvoker.keys()).sort() == list(
             self.cluster.id_2_invoker).sort(), "Invoker list from rpc update does not match record"
@@ -67,6 +69,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # get all invokers whose memory is enough and the type match default type, if exist find a proper one
         # get all invoker whose memory is enough, if exist find a proper one
         # No invoker has enough memory
+        logging.info("Get routing cold start RPC request")
         func_str = request.func_str
         mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
         with self.cluster.cluster_state_lock:

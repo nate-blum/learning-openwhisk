@@ -32,8 +32,8 @@ signal_queue = Queue()  # sending signal to control workload generator's reset/s
 SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
 SERVER_RPC_THREAD_COUNT = 8  # for routing
 SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
-RPC_ROUTING_SERVER_PORT = ""  # RPC server port, routing server
-RPC_SERVER_PORT_CLUSTER_UPDATE = ""  # RPC server port, cluster state update
+RPC_ROUTING_SERVER_PORT = "50051"  # RPC server port, routing server
+RPC_SERVER_PORT_CLUSTER_UPDATE = "50052"  # RPC server port, cluster state update
 NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
 ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
 TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
@@ -150,8 +150,6 @@ class Cluster:
     SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
     SERVER_RPC_THREAD_COUNT = 8  # for routing
     SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
-    RPC_ROUTING_SERVER_PORT = ""  # RPC server port, routing server
-    RPC_SERVER_PORT_CLUSTER_UPDATE = ""  # RPC server port, cluster state update
     NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
     ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
     TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
@@ -223,7 +221,7 @@ class Cluster:
                                                        WSK_PATH))
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
         # state update server might use the stub for sending rpc request)-----------------------------------
-        self.routing_channel = grpc.insecure_channel(f'localhost:{self.RPC_ROUTING_SERVER_PORT}')
+        self.routing_channel = grpc.insecure_channel(f'localhost:{RPC_ROUTING_SERVER_PORT}')
         self.routing_stub = routing_pb2_grpc.RoutingServiceStub(self.routing_channel)  # channel is thread safe
         # -------------------Start Cluster Update RPC server--------------------------------------------
         self.cluster_info_update_server = grpc.server(
@@ -233,7 +231,7 @@ class Cluster:
         reflection.enable_server_reflection(
             clusterstate_pb2.DESCRIPTOR.services_by_name["WskClusterInfoCollector"].full_name,
             reflection.SERVICE_NAME, self.cluster_info_update_server)
-        self.cluster_info_update_server.add_insecure_port(f"[::]:{self.RPC_SERVER_PORT_CLUSTER_UPDATE}")
+        self.cluster_info_update_server.add_insecure_port(f"[::]:{RPC_SERVER_PORT_CLUSTER_UPDATE}")
         self.cluster_info_update_server.start()
         # ----------------------------PUD thread--------------------------------------------
         self.pdu = PDU_reader(self.PDU_HOST, self.PDU_OUTLET_LST, self.PDU_SAMPLE_INTERVAL)
@@ -504,4 +502,8 @@ class Cluster:
 
 
 if __name__ == "__main__":
-    pass
+    cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict,func_spec_dict=config.func_spec_dict,nn_func_input_count=2)
+
+
+
+

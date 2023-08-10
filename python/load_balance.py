@@ -1,4 +1,7 @@
+import sys
+import os
 import time
+import logging
 from numpy.random import choice
 import numpy as np
 from typing import Dict, List, Tuple
@@ -10,7 +13,6 @@ from controller_server import routing_pb2_grpc, clusterstate_pb2_grpc
 from controller_server.clusterstate_pb2 import GetRoutingColdStartRequest, GetRoutingColdStartResponse
 from time import time_ns
 from threading import Lock, Thread
-from multiprocessing import Queue
 from environment import Invoker
 
 
@@ -32,6 +34,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.BUCKET_NSEC: int = ema_bucket_nsec
         self.ARRIVAL_EMA_COEFF: float = arrival_ema_coeff
         # -------------------------------------------------------------------------------
+        self.setup_logging()
         # might be accessed from multiple thread
         self.func_2_arrivalQueue: defaultdict[str, deque] = defaultdict(
             deque)  # deque's append operation is thread-safe, but we still use lock
@@ -48,6 +51,20 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.timer_update_arrival_info_thread = Thread(target=self._threaded_update_arrival_queue,
                                                        args=(self.TIMER_INTERVAL_SEC,), daemon=True)
         self.timer_update_arrival_info_thread.start()
+
+    def setup_logging(self):
+        # file handler
+        file_handler = logging.FileHandler(os.path.join('logs', 'log_{}'.format(self.time_stamp)), mode='w')
+        file_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        file_handler.setFormatter(file_logger_formatter)
+        file_handler.setLevel(logging.DEBUG)
+        # stream handler
+        #stream_handler = logging.StreamHandler(sys.stdout)
+        #stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        #stream_handler.setFormatter(stream_logger_formatter)
+        # stream_handler.setLevel(logging.DEBUG)
+        # must be called in main thread before any sub-thread starts
+        logging.basicConfig(level=logging.DEBUG, handlers=[file_handler])
 
     def _select_invoker_to_dispatch(self, func_id_str: str) -> int:
         # NOTE,Current heuristic: route to a invoker with the probability proportional to how many container
@@ -66,6 +83,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             return response.invoker_selected
 
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
+        logging.info("Received routing request from OW controller")
         func_id_str: str = request.actionName
         t = time_ns()
         with self.lock_arrival_q:
@@ -74,6 +92,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
+        logging.info("Receive state update notification")
         with self.lock_routing_info:
             for func_id_str, container_counter in request.func_2_ContainerCounter.items():
                 self.func_2_containerSumList[func_id_str] = container_counter.count
@@ -92,6 +111,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             time.sleep(interval_sec)
 
     def GetArrivalInfo(self, request, context):
+        logging.info("Receive get arrival info RPC")
         assert self.timer_update_arrival_info_thread.is_alive(), "Timer_update_arrival_info thread dead"  # periodic check
         # call by the agent to collect arrival info, this won't lock a lot of time as the background helper thread
         res_1s = {}
