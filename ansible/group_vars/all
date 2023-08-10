@@ -94,15 +94,21 @@ controller:
   basePort: 10001
   heap: "{{ controller_heap | default('2g') }}"
   arguments: "{{ controller_arguments | default('') }}"
-  # managedFraction: "{{ controller_managed_fraction | default(1.0 - (controller_blackbox_fraction | default(__controller_blackbox_fraction))) }}"
-  # blackboxFraction: "{{ controller_blackbox_fraction | default(__controller_blackbox_fraction) }}"
-  managedFraction: 1.0
-  blackboxFraction: 0
+  managedFraction: "{{ controller_managed_fraction | default(1.0 - (controller_blackbox_fraction | default(__controller_blackbox_fraction))) }}"
+  blackboxFraction: "{{ controller_blackbox_fraction | default(__controller_blackbox_fraction) }}"
+  #managedFraction: 1.0
+  #blackboxFraction: 0
   # flag to decide whether to send every single state update request to the agent regardless of whether anything has changed
-  sendAllUpdateRequests: true
-  agentIp: "192.168.100.2"
-  routingPort: 50051
-  clusterStatePort: 50052
+  #sendAllUpdateRequests: true
+  #agentIp: "192.168.100.2"
+  #routingPort: 50051
+  #clusterStatePort: 50052
+
+  agentIp: "{{agentIp |default('localhost')}}"
+  routingPort: "{{routingPort | default(50051)}}"
+  clusterStatePort: "{{clusterStatePort | default(50052)}}"
+  sendAllUpdateRequests: "{{sendAllUpdateRequests | default(true)}}"
+
   timeoutFactor: "{{ controller_timeout_factor | default(2) }}"
   timeoutAddon: "{{ controller_timeout_addon | default('1 m') }}"
   instances: "{{ groups['controllers'] | length }}"
@@ -116,6 +122,8 @@ controller:
       seedNodes: "{{ groups['controllers'] | map('extract', hostvars, 'ansible_host') | list }}"
   loadbalancer:
     spi: "{{ controller_loadbalancer_spi | default('') }}"
+    managed-fraction: "{{controller_loadbalancer_managed_fraction | default(1.0)}}"
+    blackbox-fraction: "{{ controller_loadbalancer_blackbox_fraction | default(1.0)}}"
   authentication:
     spi: "{{ controller_authentication_spi | default('') }}"
   loglevel: "{{ controller_loglevel | default(whisk_loglevel) | default('INFO') }}"
