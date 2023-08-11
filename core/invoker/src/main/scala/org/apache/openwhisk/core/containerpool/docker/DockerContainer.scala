@@ -194,10 +194,6 @@ class DockerContainer(protected val id: ContainerId,
     docker.rm(id)
   }
 
-  override def stats()(implicit transid: TransactionId): Future[String] = {
-    docker.stats(id)
-  }
-
   /**
    * Was the container killed due to memory exhaustion?
    *

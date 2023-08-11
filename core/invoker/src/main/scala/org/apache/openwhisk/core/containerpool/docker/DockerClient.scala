@@ -188,10 +188,6 @@ class DockerClient(dockerHost: Option[String] = None,
     runCmd(cmd, config.timeouts.ps).map(_.linesIterator.toSeq.map(ContainerId.apply))
   }
 
-  def stats(id: ContainerId)(implicit transid: TransactionId): Future[String] = {
-    runCmd(Seq("stats", "--no-stream", id.asString), 1.second)
-  }
-
   /**
    * Stores pulls that are currently being executed and collapses multiple
    * pulls into just one. After a pull is finished, the cached future is removed
@@ -287,8 +283,6 @@ trait DockerApi {
    */
   def ps(filters: Seq[(String, String)] = Seq.empty, all: Boolean = false)(
     implicit transid: TransactionId): Future[Seq[ContainerId]]
-
-  def stats(id: ContainerId)(implicit transid: TransactionId): Future[String]
 
   /**
    * Pulls the given image.

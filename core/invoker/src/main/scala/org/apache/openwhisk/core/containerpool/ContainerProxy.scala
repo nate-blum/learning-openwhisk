@@ -196,7 +196,6 @@ case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDe
 case class BeginFullWarm(action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
-case object GetStats
 
 // Events sent by the actor
 case class NeedWork(data: ContainerData)
@@ -557,12 +556,6 @@ class ContainerProxy(factory: (TransactionId,
   }
 
   when(Ready, stateTimeout = pauseGrace) {
-    case Event(GetStats, data: WarmedData) =>
-      implicit val transid = TransactionId.actionHealthPing
-      logging.info(this, s"stats: ${Await.result(data.container.stats(), 1.second)}")
-
-      stay using data
-
     case Event(job: Run, data: WarmedData) =>
       implicit val transid = job.msg.transid
       activeCount += 1

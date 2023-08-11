@@ -74,10 +74,6 @@ class YARNTask(override protected val id: ContainerId,
     ask(yarnComponentActor, RemoveContainer(component_instance_name)).mapTo[Unit]
   }
 
-  override def stats()(implicit transid: TransactionId): Future[String] = {
-    Future.successful("")
-  }
-
   /**
    * Obtains logs up to a given threshold from the container. Optionally waits for a sentinel to appear.
    * For YARN, this log message is static per container, just indicating that YARN logs can be found via the YARN UI.

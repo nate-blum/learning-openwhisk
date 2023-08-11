@@ -558,7 +558,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   def containerList(pool: Map[ActorRef, Any]): Iterable[(String, String)] = {
     pool collect {
       case (actorRef: ActorRef, d: WarmedData) =>
-        actorRef ! GetStats
         (d.container.containerId.asString, d.params.getOrElse(Map.empty).get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
       case (_, (_, p: Map[_, _])) =>
         ("", p.asInstanceOf[Map[String, Set[String]]].get("--cpuset-cpus").orElse(Some(Set(""))).get.head)
