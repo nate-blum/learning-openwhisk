@@ -56,7 +56,7 @@ import org.apache.openwhisk.core.entity.size._
 import org.apache.openwhisk.core.invoker.Invoker.LogsCollector
 import org.apache.openwhisk.http.Messages
 
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Future}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
