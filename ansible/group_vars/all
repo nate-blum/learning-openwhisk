@@ -104,7 +104,7 @@ controller:
   #routingPort: 50051
   #clusterStatePort: 50052
 
-  agentIp: "{{agentIp | default("192.168.100.2")}}"
+  agentIp: "{{agentIp | default('192.168.100.2')}}"
   routingPort: "{{routingPort | default(50051)}}"
   clusterStatePort: "{{clusterStatePort | default(50052)}}"
   sendAllUpdateRequests: "{{sendAllUpdateRequests | default(true)}}"
