@@ -173,10 +173,12 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
 
   def processInvokerPing(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
+    logging.info(this, s"The received raw string: $raw")
     PingMessage.parse(raw) match {
       case Success(p: PingMessage) =>
         self ! p
         invokerPingFeed ! MessageFeed.Processed
+        logging.info(this,s"successfully processing message: $raw, ${p.transid}")
 
       case Failure(t) =>
         invokerPingFeed ! MessageFeed.Processed

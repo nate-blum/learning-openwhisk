@@ -17,13 +17,13 @@ class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSyst
   val client: RoutingService = RoutingServiceClient(clientSettings)
 
   def executeRoutingRequest(actionName: String): Option[GetInvocationRouteResponse] = {
-    logging.info(this, "executing routing request")
+    logging.info(this, s"executing routing request for action: $actionName")
     val request: Try[GetInvocationRouteResponse] = Await.ready(client.getInvocationRoute(GetInvocationRouteRequest(actionName)), 10.seconds).value.get
     request match {
       case Success(value) =>
         Some(value)
       case Failure(e) =>
-        logging.info(this, s"executing routing request request has failed ${e.getMessage}")
+        logging.info(this, s"executing routing request request has failed ${e.getMessage} for action $actionName")
         None
     }
   }

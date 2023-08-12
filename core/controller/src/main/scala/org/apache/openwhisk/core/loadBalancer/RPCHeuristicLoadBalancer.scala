@@ -34,7 +34,7 @@ import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeLong
 import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
-import org.apache.openwhisk.core.loadBalancer.grpc.RoutingClient
+import org.apache.openwhisk.core.loadBalancer.grpc.{RoutingClient,ClusterStateClient}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.grpc.{ActionStatePerInvoker, GetInvocationRouteResponse}
 import org.apache.openwhisk.spi.SpiLoader
@@ -65,6 +65,7 @@ class RPCHeuristicLoadBalancer(
   }
 
   private val client: RoutingClient = new RoutingClient(lbConfig)
+  private val stateUpdateClient:ClusterStateClient = new ClusterStateClient(lbConfig)
 
   override protected def emitMetrics() = {
     super.emitMetrics()
@@ -109,7 +110,8 @@ class RPCHeuristicLoadBalancer(
       case RPCInvokerPoolState(newState, invokerClusterState) =>
         schedulingState.updateInvokers(newState)
         schedulingState.updateInvokerClusterState(invokerClusterState)
-        client.executeClusterStateUpdateRouting(invokerClusterState)
+        //client.executeClusterStateUpdateRouting(invokerClusterState)
+        stateUpdateClient.executeClusterStateUpdate(invokerClusterState)
 
       // State of the cluster as it is right now
       case CurrentClusterState(members, _, _, _, _) =>
