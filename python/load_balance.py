@@ -13,7 +13,8 @@ from controller_server import routing_pb2_grpc, clusterstate_pb2_grpc
 from controller_server.clusterstate_pb2 import GetRoutingColdStartRequest, GetRoutingColdStartResponse
 from time import time_ns
 from threading import Lock, Thread
-from environment import Invoker
+import utility
+import config_local
 
 
 class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
@@ -34,6 +35,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.BUCKET_NSEC: int = ema_bucket_nsec
         self.ARRIVAL_EMA_COEFF: float = arrival_ema_coeff
         # -------------------------------------------------------------------------------
+        self.time_stamp = utility.get_curr_time()
         self.setup_logging()
         # might be accessed from multiple thread
         self.func_2_arrivalQueue: defaultdict[str, deque] = defaultdict(
@@ -54,14 +56,15 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
 
     def setup_logging(self):
         # file handler
-        file_handler = logging.FileHandler(os.path.join('logs', 'log_{}'.format(self.time_stamp)), mode='w')
-        file_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        file_handler = logging.FileHandler(
+            os.path.join(config_local.wsk_log_dir, 'routingServiceLog_{}'.format(self.time_stamp)), mode='w')
+        file_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
         file_handler.setFormatter(file_logger_formatter)
         file_handler.setLevel(logging.DEBUG)
         # stream handler
-        #stream_handler = logging.StreamHandler(sys.stdout)
-        #stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
-        #stream_handler.setFormatter(stream_logger_formatter)
+        # stream_handler = logging.StreamHandler(sys.stdout)
+        # stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        # stream_handler.setFormatter(stream_logger_formatter)
         # stream_handler.setLevel(logging.DEBUG)
         # must be called in main thread before any sub-thread starts
         logging.basicConfig(level=logging.DEBUG, handlers=[file_handler])
@@ -83,8 +86,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             return response.invoker_selected
 
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
-        logging.info("Received routing request from OW controller")
         func_id_str: str = request.actionName
+        logging.info(f"Received routing request from OW controller, {func_id_str}")
         t = time_ns()
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
@@ -92,13 +95,13 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
-        logging.info("Receive state update notification")
+        logging.info(f"Receive state update notification:|{request}|")
         with self.lock_routing_info:
             for func_id_str, container_counter in request.func_2_ContainerCounter.items():
                 self.func_2_containerSumList[func_id_str] = container_counter.count
                 self.func_2_invokerId[func_id_str] = container_counter.invokerId
                 self.func_2_containerCountSum[func_id_str] = sum(container_counter.count)
-        return routing_pb2.NotifyClusterInfoResponse()
+        return routing_pb2.NotifyClusterInfoResponse(result_code=0)
 
     def _threaded_update_arrival_queue(self, interval_sec):
         # update the shared arrival queue in a separated thread, so that its length is maintained

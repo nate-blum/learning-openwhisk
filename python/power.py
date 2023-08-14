@@ -5,6 +5,7 @@ from threading import Lock, Thread
 from easysnmp import Session
 from easysnmp.exceptions import EasySNMPTimeoutError
 from easysnmp.exceptions import EasySNMPError
+import time
 
 class PDU_reader:
     def __init__(self, pdu_ip, outlet_id_lst, sample_interval):
@@ -60,7 +61,7 @@ class PDU_reader:
             start_t = time.time()
             res = self.query_pdu_active_power()
             with self.power_sample_lock:
-                res.append(sum(res))
+                self.power_sample.append(sum(res))
             duration = time.time() - start_t
             if duration < self.sample_interval:
                 time.sleep(self.sample_interval - duration)

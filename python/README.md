@@ -10,3 +10,7 @@ Important Configuration Variables:
 3. `sendAllUpdateRequests` - decides whether to send every single cluster update to the agent, or just updates with changes
 4. `routingPort` - the port the controller will query for routing decisions
 5. `clusterStatePort` - the port the controller will send cluster state updates to
+
+# TODO
+- Make sure invoker id from Wsk runtime match agent runtime (e.g., invoker0 is xe?).
+- 

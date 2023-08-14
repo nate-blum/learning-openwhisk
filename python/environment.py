@@ -1,4 +1,7 @@
 import sys
+
+sys.path.append('./invoker_client')
+sys.path.append('./controller_server')
 import logging
 import time
 from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
@@ -21,10 +24,11 @@ from reward import compute_reward_using_overall_stat
 from grpc_reflection.v1alpha import reflection
 from google.protobuf.internal.containers import ScalarMap
 
+import utility
 import training_configs  # training config
 import config  # cluster environment config
 from load_balance import start_rpc_routing_server_process
-from state_collector import WskClusterInfoCollector
+import state_collector
 from power import PDU_reader
 from workload_generator import start_workload_process
 
@@ -173,6 +177,7 @@ class Cluster:
     WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
+        self.time_stamp = utility.get_curr_time()
         self.setup_logging()
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
@@ -191,13 +196,14 @@ class Cluster:
         # FIFO, must use dict as container might have the same id on different invoker (docker runtime)
         self.most_recent_killed_container_cache: dict[int, Deque[str]] = None
 
-        self.cluster_spec_dict = cluster_spec_dict
+        self.cluster_spec_dict: dict = cluster_spec_dict
         self.server_type_lst = list(cluster_spec_dict.keys())
         self.server_types = []
         self.serverType_2_index: dict[str, int] = {}
         self.func_spec_dict = func_spec_dict
         self.all_func_ids = []
         self.actionRealizeCounter = ActionRealizeCounter()
+        self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances, and before register of function
         for name, spec in self.func_spec_dict.items():
             func_id = self.register_func(**spec)
             self.all_func_ids.append(func_id)
@@ -205,7 +211,6 @@ class Cluster:
         self.state_info = None
         self.cluster_peak_pw = None
 
-        self._initialization()  # must start before the rpc server b/c rpc server use the invoker instances
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
         self.load_balancer_process = Process(target=start_rpc_routing_server_process,
@@ -215,27 +220,31 @@ class Cluster:
                                                    ARRIVAL_EMA_BUCKET_NSEC, ARRIVAL_EMA_COEFF,
                                                    RPC_SERVER_PORT_CLUSTER_UPDATE), daemon=True)  # avoid self usage
         self.load_balancer_process.start()
+        logging.info("load balance process started")
         # --------------------------------Start Worklaod Generation Process-----------------------------------
-        self.workload_generate_process = Process(target=start_workload_process,
-                                                 args=(signal_queue, WORKLOAD_START_POINTER, WORKLOAD_TRACE_FILE,
-                                                       WSK_PATH))
+        # self.workload_generate_process = Process(target=start_workload_process,
+        #                                          args=(signal_queue, WORKLOAD_START_POINTER, WORKLOAD_TRACE_FILE,
+        #                                                WSK_PATH))
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
         # state update server might use the stub for sending rpc request)-----------------------------------
         self.routing_channel = grpc.insecure_channel(f'localhost:{RPC_ROUTING_SERVER_PORT}')
         self.routing_stub = routing_pb2_grpc.RoutingServiceStub(self.routing_channel)  # channel is thread safe
+        logging.info("routing service client started")
         # -------------------Start Cluster Update RPC server--------------------------------------------
         self.cluster_info_update_server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=self.SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE))
-        clusterstate_pb2_grpc.add_ClusterStateServiceServicer_to_server(WskClusterInfoCollector(self),
+        clusterstate_pb2_grpc.add_ClusterStateServiceServicer_to_server(state_collector.WskClusterInfoCollector(self),
                                                                         self.cluster_info_update_server)
         reflection.enable_server_reflection(
-            clusterstate_pb2.DESCRIPTOR.services_by_name["WskClusterInfoCollector"].full_name,
-            reflection.SERVICE_NAME, self.cluster_info_update_server)
+            (clusterstate_pb2.DESCRIPTOR.services_by_name["ClusterStateService"].full_name,
+             reflection.SERVICE_NAME), self.cluster_info_update_server)
         self.cluster_info_update_server.add_insecure_port(f"[::]:{RPC_SERVER_PORT_CLUSTER_UPDATE}")
         self.cluster_info_update_server.start()
+        logging.info("cluster state service started")
         # ----------------------------PUD thread--------------------------------------------
         self.pdu = PDU_reader(self.PDU_HOST, self.PDU_OUTLET_LST, self.PDU_SAMPLE_INTERVAL)
         self.pdu.start_thread()
+        logging.info("pdu thread started")
 
     def setup_logging(self):
         # file handler
@@ -245,11 +254,11 @@ class Cluster:
         # file_handler.setLevel(logging.INFO)
         # stream handler
         stream_handler = logging.StreamHandler(sys.stdout)
-        stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
         stream_handler.setFormatter(stream_logger_formatter)
         # stream_handler.setLevel(logging.DEBUG)
         # must be called in main thread before any sub-thread starts
-        logging.basicConfig(level=logging.DEBUG, handlers=[stream_handler])
+        logging.basicConfig(level=logging.INFO, handlers=[stream_handler])
 
     def _assertion(self):
         assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
@@ -262,7 +271,7 @@ class Cluster:
         # instantiate Invoker instances, the invoker instance will initialize the Core object
         invoker_id_counter = 0
         cluster_peak = 0
-        for _type, spec_map_lst in self.cluster_spec_dict:
+        for _type, spec_map_lst in self.cluster_spec_dict.items():
             self.server_types.append(_type)
             for spec in spec_map_lst:
                 cluster_peak += self.SERVER_POWER_SPECS[_type]['peak']
@@ -287,6 +296,8 @@ class Cluster:
 
     def _update_invoker_state(self):
         # update the invoker state after controller rpc update
+        logging.info(f"invokers {self.id_2_invoker.values()}")
+        logging.info(f"func_2_busy: {self.func_2_busyinfo}")
         for invoker in self.id_2_invoker.values():
             warm_sum: int = 0
             busy_sum: int = 0
@@ -340,13 +351,13 @@ class Cluster:
         lst_warmset: List[frozenset[Container]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
                                                    invk.type == type]
         lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
-        #lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
+        # lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
         lst_warm: List[Container] = [container for s in lst_warmset for container in s]  # flatten the list
         lst_busyset = [container for s in lst_busyset for container in s]
-        #lst_warmingset = [container for s in lst_warmingset for container in s]
+        # lst_warmingset = [container for s in lst_warmingset for container in s]
         candidate_lst: List[Container] = list(
             chain.from_iterable([lst_warm,
-                                 #lst_warmingset,  # warming container does not have an id
+                                 # lst_warmingset,  # warming container does not have an id
                                  lst_busyset]))  # flatten list of list
         if candidate_lst:
             self.actionRealizeCounter.delete_success += 1
@@ -413,6 +424,11 @@ class Cluster:
                                                         latency_factor=self.RATIO_BASED_LATENCY_FACTOR)
         return state, reward_dict, False, False, self.state_info
 
+    def step_dummy(self):
+        self._check_healthy_on_each_step()
+        self.pdu.clear_samples()
+        time.sleep(2)
+
     # get the features of All function so that to choose the active working functions.
     def select_from_all_state(self, ema_dict: ScalarMap[str, float]) -> None:
         delta_ema_ndarray = np.array(list(ema_dict.values()))
@@ -436,7 +452,7 @@ class Cluster:
         res_dict = {type_: (0, 0, 0) for type_ in self.server_types}  # (warm, warming, busy)
         for invoker, set_container in self.func_2_warminfo[func_str].items():
             res_dict[invoker.type][0] += len(set_container)
-        for invoker, set_container in self.func_2_warminginfo[func_str].items(): # okay is warming has no id
+        for invoker, set_container in self.func_2_warminginfo[func_str].items():  # okay is warming has no id
             res_dict[invoker.type][1] += len(set_container)
         for invoker, set_container in self.func_2_busyinfo[func_str].items():
             res_dict[invoker.type][2] += len(set_container)
@@ -481,12 +497,14 @@ class Cluster:
         else:
             return nn_state
 
-    def register_func(self, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
+    def register_func(self, **kwargs):
         # TODO, register into the openwhisk system, via openwhisk CLI
         func_id = self.func_id_counter
-        self.strId_2_funcs[name] = Func(id=func_id, namesp=namesp, name=name, mem_req=mem_req,
-                                        cpu_req=cpu_req, sla=sla,
-                                        invoker_2_referenceExecTime=invoker_2_referenceExecTime)
+        name = kwargs['name']
+        self.strId_2_funcs[name] = Func(id=func_id, namesp=kwargs['namesp'], name=kwargs['name'],
+                                        mem_req=kwargs['mem_req'],
+                                        cpu_req=kwargs['cpu_req'], sla=kwargs['sla'],
+                                        invoker_2_referenceExecTime=kwargs['invoker_2_referenceExecTime'])
         self.intId_2_funcStrName[func_id] = name
         self.funcname_2_id[name] = func_id
         self.func_2_warminfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
@@ -502,8 +520,7 @@ class Cluster:
 
 
 if __name__ == "__main__":
-    cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict,func_spec_dict=config.func_spec_dict,nn_func_input_count=2)
-
-
-
-
+    cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
+                      nn_func_input_count=2)
+    while True:
+        cluster.step_dummy()
