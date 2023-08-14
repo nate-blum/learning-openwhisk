@@ -1,6 +1,6 @@
 import os
 import config_local
-from faasEnv import config_full_minibatch
+import config
 trace_root = config_local.trace_root_path
 
 # wandb_group_name = "GreenFaaS_arrival100"
@@ -12,7 +12,7 @@ trace_root = config_local.trace_root_path
 #wandb_group_name = "AzureTop5funcs_ratioReward"
 wandb_group_name = "Interference_AzureTop5funcs_ratioReward"
 
-note = "rewardRatio0.5_T100_2ContainerPerCore_" + config_full_minibatch.CONFIG_NOTE
+note = "rewardRatio0.5_T100_2ContainerPerCore_" + config.CONFIG_NOTE
 
 SLOT_DURATION_SECOND = 2
 num_envs = 10

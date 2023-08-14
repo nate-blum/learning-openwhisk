@@ -60,5 +60,5 @@ message NotifyClusterInfoRequest {
   map<string, ContainerCounter> func_2_ContainerCounter =1;
 }
 message NotifyClusterInfoResponse {
-
+  int32 result_code = 1;
 }
