@@ -17,15 +17,16 @@ class ClusterStateClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit acto
   val client: ClusterStateService = ClusterStateServiceClient(clientSettings)
 
   def executeClusterStateUpdate(state: mutable.Map[Int, ActionStatePerInvoker]): Unit = {
-    logging.info(this, "executing clusterstate request")
+    logging.info(this, "executing clusterstate request from clusterStateUpdate client")
     // val request: Try[UpdateClusterStateResponse] =
     //   Await.ready(client.updateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap)))), 10.seconds).value.get
-    client.updateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap)))).onComplete({
+    val reply = client.updateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap))))
+    reply.onComplete {
       case Success(value) =>
         logging.info(this, s"updating cluster state request has succeed")
       case Failure(e) =>
         logging.info(this, s"updating cluster state request has failed ${e.getMessage}")
-    })
+    }
     // request match {
     //   case Success(value) =>
     //     Some(value)
