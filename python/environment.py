@@ -1,5 +1,5 @@
 import sys
-
+import pprint
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
 import logging
@@ -69,9 +69,13 @@ class Core:
         self.max_freq: int = max_freq
         self.min_freq: int = min_freq
         self.desired_freq: int = desired_freq
+    def __str__(self):
+        return f"NP:{self.num_pinned_container}"
 
 
 class Invoker:
+    RPC_PORT = "50051"
+
     def __init__(self, id, host, type, mem_capacity, num_cores, core_spec_dict: Dict[int, Dict],
                  max_pinned_container_per_core: int) -> None:
         self.id: int = id
@@ -90,13 +94,24 @@ class Invoker:
             self.id_2_core[id] = Core(**spec)
 
         # -------------rpc channel-----------------
-        self.channel = grpc.insecure_channel(self.hostname)
+        self.channel = grpc.insecure_channel(f"{self.hostname}:{self.RPC_PORT}")
         self.stub = invoker_service.InvokerServiceStub(channel=self.channel)
 
+    def __str__(self)->str:
+        core_str = "_".join( [core.__str__() for core in self.id_2_core.values()])
+        return (f"id:{self.id},host:{self.hostname},type:{self.type},num_container:[w{self.num_warm_container}b{self.num_busy_container}wi{self.num_warming_container}]"
+                f"\n[{core_str}]")
+    def __repr__(self)->str:
+        return self.__str__()
+
+
+
     def rpc_add_container(self, action_name: str, pinned_core: List[int]) -> None:
-        self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name, params={
-            "--cpuset-cpus": "_".join([str(core) for core in pinned_core])
+        logging.info(f"Starting a new container for {action_name}, pin core: {pinned_core}")
+        resp = self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name, params={
+            "--cpuset-cpus": ",".join([str(core) for core in pinned_core])
         }))
+        logging.info(f"adding container res: {resp}")
 
     def rpc_delete_container(self, container_id: str, func_name: str):
         # TODO, how the Success Response is determined from Scala runtime
@@ -137,7 +152,8 @@ class Container:
         self.id: str = str_id
         self.pinned_core: List[Core] = pinned_core
         self.invoker: Invoker = invoker
-
+    def __repr__(self):
+        return f"id:{self.id},pinnedCore:{[c.id for c in self.pinned_core]},invk_id:{self.invoker.id}"
 
 class Func:
     def __init__(self, id, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
@@ -151,30 +167,6 @@ class Func:
 
 
 class Cluster:
-    SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
-    SERVER_RPC_THREAD_COUNT = 8  # for routing
-    SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
-    NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
-    ACTION_MAPPING_BOUNDARY: int = training_configs.action_mapping_boundary
-    TYPE_MAPPING_BOUNDARY: List[int] = training_configs.type_mapping_boundary
-    SERVER_TYPE_LIST: List[str] = list(config.cluster_spec_dict.keys())
-    CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT = bool(training_configs.params['consider_container_pinning_per_core_limit'])
-    MOST_RECENT_KILLED_CONTAINER_SET_LIMIT = 10
-    SERVER_POWER_SPECS = config.server_power_specs
-    RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
-    DEFAULT_SERVER_TYPE = config.default_svr_type
-    ARRIVAL_Q_TIMER_INTERVAL_SEC = 0.2
-    ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9)  # 120second, 2 minute, in nanosecond
-    EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond
-    ARRIVAL_EMA_BUCKET_NSEC = 2_000_000_000  # 2 second in nanosecond
-    ARRIVAL_EMA_COEFF = 0.4
-    do_state_clip: bool = training_configs.NN['state_clip']
-    state_clip_value = 2000
-    PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
-    PDU_OUTLET_LST = [21, 22]
-    PDU_SAMPLE_INTERVAL = 0.4
-    WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
-    WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
         self.time_stamp = utility.get_curr_time()
@@ -232,7 +224,7 @@ class Cluster:
         logging.info("routing service client started")
         # -------------------Start Cluster Update RPC server--------------------------------------------
         self.cluster_info_update_server = grpc.server(
-            futures.ThreadPoolExecutor(max_workers=self.SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE))
+            futures.ThreadPoolExecutor(max_workers=SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE))
         clusterstate_pb2_grpc.add_ClusterStateServiceServicer_to_server(state_collector.WskClusterInfoCollector(self),
                                                                         self.cluster_info_update_server)
         reflection.enable_server_reflection(
@@ -242,9 +234,17 @@ class Cluster:
         self.cluster_info_update_server.start()
         logging.info("cluster state service started")
         # ----------------------------PUD thread--------------------------------------------
-        self.pdu = PDU_reader(self.PDU_HOST, self.PDU_OUTLET_LST, self.PDU_SAMPLE_INTERVAL)
+        self.pdu = PDU_reader(PDU_HOST, PDU_OUTLET_LST, PDU_SAMPLE_INTERVAL)
         self.pdu.start_thread()
         logging.info("pdu thread started")
+
+    def print_state(self):
+        print("-----------------------------State Begin-----------------------------------------")
+        pprint.pp(self.id_2_invoker)
+        pprint.pprint(self.func_2_warminfo)
+        pprint.pprint(self.func_2_busyinfo)
+        pprint.pprint(self.func_2_warminginfo)
+        print("-----------------------------State End--------------------------------------------")
 
     def setup_logging(self):
         # file handler
@@ -261,7 +261,7 @@ class Cluster:
         logging.basicConfig(level=logging.INFO, handlers=[stream_handler])
 
     def _assertion(self):
-        assert len(self.TYPE_MAPPING_BOUNDARY) + 1 == len(self.SERVER_TYPE_LIST)
+        assert len(TYPE_MAPPING_BOUNDARY) + 1 == len(SERVER_TYPE_LIST)
 
     def _check_healthy_on_each_step(self):
         assert self.pdu.pdu_thread.is_alive(), "PDU thread dead!"
@@ -274,7 +274,7 @@ class Cluster:
         for _type, spec_map_lst in self.cluster_spec_dict.items():
             self.server_types.append(_type)
             for spec in spec_map_lst:
-                cluster_peak += self.SERVER_POWER_SPECS[_type]['peak']
+                cluster_peak += SERVER_POWER_SPECS[_type]['peak']
                 self.id_2_invoker[invoker_id_counter] = Invoker(invoker_id_counter, spec['host'], _type,
                                                                 spec['mem_capacity'], spec['num_cores'],
                                                                 {i: {'id': i, 'max_freq': spec['max_freq'],
@@ -290,7 +290,7 @@ class Cluster:
         self.cluster_peak_pw = cluster_peak
         for i, _type in enumerate(self.server_types):
             self.serverType_2_index[_type] = i
-        self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=self.MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
+        self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
                                                    for invoker_id in self.id_2_invoker.keys()}
         logging.info("Env initialization done")
 
@@ -320,19 +320,19 @@ class Cluster:
         # the output is sample from Normal distribution, they should be mapped as real control operation
         # adding default sub-action to the simple action
         action_cpp = {}
-        for idx in range(self.NUM_ACTIVE_FUNC):
+        for idx in range(NUM_ACTIVE_FUNC):
             # mapped_action = [None, 3000, None, 1.0]  # <delta, freq, type, target_load>
             slice_ = slice(idx * 2, (idx + 1) * 2)
             actions = simple_action[slice_]
             # delta dimension
-            if actions[0] < -self.ACTION_MAPPING_BOUNDARY:
+            if actions[0] < -ACTION_MAPPING_BOUNDARY:
                 delta = -1
-            elif -self.ACTION_MAPPING_BOUNDARY <= actions[0] < self.ACTION_MAPPING_BOUNDARY:
+            elif -ACTION_MAPPING_BOUNDARY <= actions[0] < ACTION_MAPPING_BOUNDARY:
                 delta = 0
             else:
                 delta = 1
             # server type dimension, return an index by bineary search
-            type_ = self.SERVER_TYPE_LIST[bisect(self.TYPE_MAPPING_BOUNDARY, actions[1])]
+            type_ = SERVER_TYPE_LIST[bisect(TYPE_MAPPING_BOUNDARY, actions[1])]
             action_cpp[self.active_func_ids[idx]] = Action(container_delta=delta, type=type_)
         # print(action_cpp)
         return action_cpp
@@ -384,7 +384,7 @@ class Cluster:
         candidates_pass_type: Set[Invoker] = self.type_2_invoker[action.type]
         candidates_pass_mem: Set[Invoker] = {invoker for invoker in self.id_2_invoker.values() if
                                              invoker.free_mem >= mem_req and not (
-                                                     self.CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT and invoker.is_all_core_pinned_to_uplimit())}
+                                                     CONSIDER_CONTAINER_PINN_PER_CORE_LIMIT and invoker.is_all_core_pinned_to_uplimit())}
         candidates_pass_load: Set[Invoker] = {invoker for invoker in self.id_2_invoker.values() if
                                               invoker.last_utilization_record <= target_load}
         # meet all
@@ -414,14 +414,14 @@ class Cluster:
         mapped_action: Dict[int, Action] = self._map_action(action)
         self.pdu.clear_samples()  # clear sample just before taking action
         self.take_action(mapped_action)
-        time.sleep(self.SLOT_DURATION)  # NOTE, do not consider system process latency
+        time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
 
         state = self.get_obs()
         sla_latency = self.get_sla_latency_for_reward()  # contain all function, not jut active function
         reward_dict = compute_reward_using_overall_stat(get_power=self.pdu.get_average_power,
                                                         func_2_latencies=sla_latency,
                                                         cluster_peak_pw=self.cluster_peak_pw,
-                                                        latency_factor=self.RATIO_BASED_LATENCY_FACTOR)
+                                                        latency_factor=RATIO_BASED_LATENCY_FACTOR)
         return state, reward_dict, False, False, self.state_info
 
     def step_dummy(self):
@@ -492,8 +492,8 @@ class Cluster:
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
-        if self.do_state_clip:
-            return np.clip(nn_state, -self.state_clip_value, self.state_clip_value)
+        if do_state_clip:
+            return np.clip(nn_state, -state_clip_value, state_clip_value)
         else:
             return nn_state
 
@@ -522,5 +522,7 @@ class Cluster:
 if __name__ == "__main__":
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
+    #cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
     while True:
         cluster.step_dummy()
+        cluster.print_state()
