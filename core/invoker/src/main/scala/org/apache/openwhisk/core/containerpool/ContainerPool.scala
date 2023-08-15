@@ -194,6 +194,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")
       //TODO: reset run buffer?
+      runBuffer = immutable.Queue.empty
       List(freePool, busyPool, prewarmedPool, prewarmStartingPool, warmingPool)
         .flatMap(_.keys) foreach removeContainer
 

@@ -18,7 +18,7 @@ class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSyst
 
   def executeRoutingRequest(actionName: String): Option[GetInvocationRouteResponse] = {
     logging.info(this, s"executing routing request for action: $actionName")
-    val request: Try[GetInvocationRouteResponse] = Await.ready(client.getInvocationRoute(GetInvocationRouteRequest(actionName)), 10.seconds).value.get
+    val request: Try[GetInvocationRouteResponse] = Await.ready(client.getInvocationRoute(GetInvocationRouteRequest(actionName)), 1.seconds).value.get
     request match {
       case Success(value) =>
         Some(value)
@@ -28,16 +28,14 @@ class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSyst
     }
   }
 
-  def executeClusterStateUpdateRouting(state: mutable.Map[Int, ActionStatePerInvoker]): Option[UpdateClusterStateResponse] = {
-    logging.info(this, "executing clusterstate request")
-    val request: Try[UpdateClusterStateResponse] =
-      Await.ready(client.routingUpdateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap)))), 10.seconds).value.get
-    request match {
+  def executeRoutingClusterStateUpdate(state: mutable.Map[Int, ActionStatePerInvoker]): Unit = {
+    logging.info(this, "executing clusterstate request from clusterStateUpdate client")
+    val reply = client.routingUpdateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap))))
+    reply.onComplete {
       case Success(value) =>
-        Some(value)
+        logging.info(this, s"updating cluster state request has succeeded")
       case Failure(e) =>
         logging.info(this, s"updating cluster state request has failed ${e.getMessage}")
-        None
     }
   }
 }
