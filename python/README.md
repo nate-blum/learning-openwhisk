@@ -13,4 +13,7 @@ Important Configuration Variables:
 
 # TODO
 - Make sure invoker id from Wsk runtime match agent runtime (e.g., invoker0 is xe?).
+
+# TEST
+- add single container
 - 
