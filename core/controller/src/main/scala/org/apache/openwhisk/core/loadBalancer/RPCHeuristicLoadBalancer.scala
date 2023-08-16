@@ -64,8 +64,8 @@ class RPCHeuristicLoadBalancer(
     None
   }
 
-  private val client: RoutingClient = new RoutingClient(lbConfig)
-  private val stateUpdateClient:ClusterStateClient = new ClusterStateClient(lbConfig)
+  private val routingClient: RoutingClient = new RoutingClient(lbConfig)
+  private val stateUpdateClient: ClusterStateClient = new ClusterStateClient(lbConfig)
 
   override protected def emitMetrics() = {
     super.emitMetrics()
@@ -145,8 +145,7 @@ class RPCHeuristicLoadBalancer(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     println(lbConfig)
 
-    val request: Option[GetInvocationRouteResponse] = client.executeRoutingRequest(action.name.name)
-    val invoker: Option[InvokerInstanceId] = request match {
+    val invoker: Option[InvokerInstanceId] = routingClient.executeRoutingRequest(action.name.name) match {
       case Some(v) =>
         schedulingState.invokers.find(_.id.instance == v.invokerInstanceId).map(_.id)
       case None =>
