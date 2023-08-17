@@ -4,6 +4,7 @@ import pprint
 import config_local
 import rpyc
 import pickle
+from statistics import mean
 
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
@@ -317,7 +318,8 @@ class Cluster:
         # initialize invoker python runtime
         for host in invoker_host_lst:
             # bug: use "" inside '', make the command in one line
-            subprocess.Popen(f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} "pkill -f stats_collect"', shell=True).wait()
+            subprocess.Popen(f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} "pkill -f stats_collect"',
+                             shell=True).wait()
             p = subprocess.Popen(
                 f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} " nohup {INVOKER_PYTHON_PATH} {os.path.join(INVOKER_SOURCE_PATH, "python/invoker_runtime/stats_collect_server.py")} >nohup_ow.log  2>&1 &"',
                 shell=True)
@@ -550,9 +552,41 @@ class Cluster:
         return func_id
 
     # ----------for collecting runtime info---------
-    def get_avg_busy_container_utilization_per_type(self, func_ids: List):
+    def get_avg_busy_container_utilization_per_type(self, func_ids: List)->list[float]:
         # get avg container utilization per type for each function
-        pass
+        res = []
+        for func in func_ids:
+            utilization = []
+            invk_2_busy = self.func_2_busyinfo[func]
+            for invk, container_set in invk_2_busy.items():
+                if not container_set:
+                    continue
+                container_2_util = invk.rpyc_get_container_stats()
+                for contr in container_set:
+                    try:
+                        utilization.append(container_2_util[contr])
+                    except KeyError:
+                        logging.error(
+                            f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
+                        assert False
+            invk_2_warm = self.func_2_warminfo[func]
+            for invk, container_set in invk_2_warm.items():
+                if not container_set:
+                    continue
+                container_2_util = invk.rpyc_get_container_stats()
+                for contr in container_set:
+                    try:
+                        utilization.append(container_2_util[contr])
+                    except KeyError:
+                        logging.error(
+                            f"No container utilization record for warm container {contr} of function {func} on invoker: {invk.id}")
+                        assert False
+            if utilization:
+                res.append(mean(utilization))
+            else:
+                res.append(0)
+        return res
+
 
 
 def test_popen_remote():
