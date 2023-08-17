@@ -36,7 +36,7 @@ import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
 import org.apache.openwhisk.core.loadBalancer.grpc.{RoutingClient,ClusterStateClient}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
-import org.apache.openwhisk.grpc.{ActionStatePerInvoker, GetInvocationRouteResponse}
+import org.apache.openwhisk.grpc.{ActionStatePerInvoker}
 import org.apache.openwhisk.spi.SpiLoader
 
 import scala.collection.mutable

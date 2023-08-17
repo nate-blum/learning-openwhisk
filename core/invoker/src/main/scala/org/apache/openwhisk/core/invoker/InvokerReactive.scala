@@ -332,7 +332,8 @@ class InvokerReactive(
       annotations = {
         Parameters(WhiskActivation.pathAnnotation, JsString(msg.action.copy(version = None).asString)) ++
           Parameters(WhiskActivation.kindAnnotation, JsString(Exec.UNKNOWN)) ++ causedBy
-      })
+      },
+      instanceId = Some(instance.toInt))
   }
 
   private val healthProducer = msgProvider.getProducer(config)
