@@ -61,8 +61,6 @@ kafka_network_threads: 8
 
 invoker_heap: '8g'
 invoker_user_memory: '40g'
-invoker_health_test_buffer: 256
-invoker_always_cold_start: false
 
 limit_invocations_per_minute: 6000
 limit_invocations_concurrent: 3000

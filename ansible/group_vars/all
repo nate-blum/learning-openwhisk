@@ -241,8 +241,6 @@ invoker:
   protocol: "{{ invoker_protocol | default('https') }}"
   username: "{{ invoker_username | default('invoker.user') }}"
   password: "{{ invoker_password | default('invoker.pass') }}"
-  healthTestBuffer: "{{ invoker_health_test_buffer | default(256) }}"
-  alwaysColdStart: "{{ invoker_always_cold_start | default(true) }}"
   ssl:
     cn: "openwhisk-invokers"
     keyPrefix: "{{ __invoker_ssl_keyPrefix }}"
