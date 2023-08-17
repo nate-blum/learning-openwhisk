@@ -587,8 +587,6 @@ class Cluster:
                 res.append(0)
         return res
 
-
-
 def test_popen_remote():
     host = "panic-cloud-xs-06.cs.rutgers.edu"
     # p = subprocess.Popen(
