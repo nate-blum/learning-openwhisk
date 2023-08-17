@@ -531,7 +531,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           //get the appropriate ttl from prewarm configs
           val ttl =
             prewarmConfig.find(pc => pc.memoryLimit == memory && pc.exec.kind == kind).flatMap(_.reactive.map(_.ttl))
-          prewarmContainer(action.exec, memory, ttl, action.name.name.contains())
+          prewarmContainer(action.exec, memory, ttl, action.name.name.contains("invokerHealthTestAction"))
           (ref, data)
       }
   }
