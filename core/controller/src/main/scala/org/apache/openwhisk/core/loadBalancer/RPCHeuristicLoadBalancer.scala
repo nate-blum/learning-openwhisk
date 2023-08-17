@@ -144,6 +144,7 @@ class RPCHeuristicLoadBalancer(
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     println(lbConfig)
+    logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
 
     val invoker: Option[InvokerInstanceId] = routingClient.executeRoutingRequest(action.name.name) match {
       case Some(v) =>

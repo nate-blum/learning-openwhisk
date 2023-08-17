@@ -123,8 +123,14 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
       }
 
       val aSPI = convertActionStatesToActionStatePerInvoker(p.actionStates)
+      val oldState = invokerClusterState.get(p.instance.toInt)
+
+      if ((!lbConfig.sendAllUpdateRequests && oldState.isDefined && oldState.get != aSPI) ||
+        lbConfig.sendAllUpdateRequests)
+        monitor.foreach(_ ! RPCInvokerPoolState(status, invokerClusterState))
+
       invokerClusterState.update(p.instance.toInt, aSPI)
-      if (lbConfig.sendAllUpdateRequests) logStatus()
+      println(lbConfig)
 
       invoker.forward(p)
 

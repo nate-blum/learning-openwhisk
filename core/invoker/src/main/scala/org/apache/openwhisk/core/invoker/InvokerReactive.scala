@@ -257,6 +257,9 @@ class InvokerReactive(
             msg.user.namespace.uuid,
             CombinedCompletionAndResultMessage(transid, activation, instance))
 
+          println(activation)
+          logging.info(this, "storing activation")
+
           store(msg.transid, activation, msg.blocking, UserContext(msg.user))
           Future.successful(())
       }

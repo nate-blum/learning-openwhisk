@@ -157,7 +157,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   def receive: Receive = {
     case w: BeginFullWarm =>
-      if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, w.action.limits.memory.megabytes.MB)) {
+      if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, w.action.limits.memory.megabytes.MB, false)) {
         val newContainer = childFactory(context)
         warmingPool = warmingPool + (newContainer -> (w.action, w.params))
 
@@ -230,7 +230,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                 .map(container => (container, "prewarmed"))
                 .orElse {
                   // Is there enough space to create a new container or do other containers have to be removed?
-                  if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory)) {
+                  if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, r.action.name.name.contains("invokerHealthTestAction"))) {
                     val container = Some(createContainer(memory), "cold")
                     incrementColdStartCount(kind, memory)
                     container
@@ -454,7 +454,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         val desiredCount = c._2._2
         if (currentCount < desiredCount) {
           (currentCount until desiredCount).foreach { _ =>
-            prewarmContainer(config.exec, config.memoryLimit, config.reactive.map(_.ttl))
+            prewarmContainer(config.exec, config.memoryLimit, config.reactive.map(_.ttl), false)
           }
         }
       }
@@ -473,8 +473,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   /** Creates a new prewarmed container */
-  def prewarmContainer(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration]): Unit = {
-    if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memoryLimit)) {
+  def prewarmContainer(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration], isHealthTestAction: Boolean): Unit = {
+    if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memoryLimit, isHealthTestAction)) {
       val newContainer = childFactory(context)
       prewarmStartingPool = prewarmStartingPool + (newContainer -> (exec.kind, memoryLimit))
       newContainer ! Start(exec, memoryLimit, ttl)
@@ -529,7 +529,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           //get the appropriate ttl from prewarm configs
           val ttl =
             prewarmConfig.find(pc => pc.memoryLimit == memory && pc.exec.kind == kind).flatMap(_.reactive.map(_.ttl))
-          prewarmContainer(action.exec, memory, ttl)
+          prewarmContainer(action.exec, memory, ttl, action.name.name.contains())
           (ref, data)
       }
   }
@@ -552,8 +552,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   def hasPoolSpaceFor[A](pool: Map[A, ContainerData],
                          prewarmStartingPool: Map[A, (String, ByteSize)],
                          warmingPool: Map[A, (ExecutableWhiskAction, Map[String, Set[String]])],
-                         memory: ByteSize): Boolean = {
-    memoryConsumptionOf(pool) + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB).sum + memory.toMB <= poolConfig.userMemory.toMB
+                         memory: ByteSize,
+                         isHealthTest: Boolean): Boolean = {
+    memoryConsumptionOf(pool) + prewarmStartingPool.map(_._2._2.toMB).sum + warmingPool.map(_._2._1.limits.memory.megabytes.MB.toMB).sum + memory.toMB + (if (isHealthTest) 0 else poolConfig.healthTestBuffer) <= poolConfig.userMemory.toMB
   }
 
   def containerList(pool: Map[ActorRef, Any]): Iterable[(String, String)] = {

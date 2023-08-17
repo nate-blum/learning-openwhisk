@@ -54,12 +54,15 @@ controller_managed_fraction: 1.0
 controller_blackbox_fraction: 1.0
 controller_loadbalancer_managed_fraction: 1.0
 controller_loadbalancer_blackbox_fraction: 1.0
+controller_send_all_update_requests: false
 
 kafka_heap: '8g'
 kafka_network_threads: 8
 
 invoker_heap: '8g'
 invoker_user_memory: '40g'
+invoker_health_test_buffer: 256
+invoker_always_cold_start: false
 
 limit_invocations_per_minute: 6000
 limit_invocations_concurrent: 3000

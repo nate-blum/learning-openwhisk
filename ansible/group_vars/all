@@ -107,7 +107,7 @@ controller:
   agentIp: "{{agentIp | default('192.168.100.2')}}"
   routingPort: "{{routingPort | default(50051)}}"
   clusterStatePort: "{{clusterStatePort | default(50052)}}"
-  sendAllUpdateRequests: "{{sendAllUpdateRequests | default(true)}}"
+  sendAllUpdateRequests: "{{ controller_send_all_update_requests | default(true) }}"
 
   timeoutFactor: "{{ controller_timeout_factor | default(2) }}"
   timeoutAddon: "{{ controller_timeout_addon | default('1 m') }}"
@@ -241,6 +241,8 @@ invoker:
   protocol: "{{ invoker_protocol | default('https') }}"
   username: "{{ invoker_username | default('invoker.user') }}"
   password: "{{ invoker_password | default('invoker.pass') }}"
+  healthTestBuffer: "{{ invoker_health_test_buffer | default(256) }}"
+  alwaysColdStart: "{{ invoker_always_cold_start | default(true) }}"
   ssl:
     cn: "openwhisk-invokers"
     keyPrefix: "{{ __invoker_ssl_keyPrefix }}"
