@@ -1,9 +1,16 @@
 import sys
+import os
 import pprint
+import config_local
+import rpyc
+import pickle
+from statistics import mean
+
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
 import logging
 import time
+import subprocess
 from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
 from collections.abc import Iterable
 from operator import itemgetter
@@ -27,6 +34,7 @@ from google.protobuf.internal.containers import ScalarMap
 import utility
 import training_configs  # training config
 import config  # cluster environment config
+import auth
 from load_balance import start_rpc_routing_server_process
 import state_collector
 from power import PDU_reader
@@ -60,6 +68,11 @@ PDU_SAMPLE_INTERVAL = 0.4
 WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
 WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
 WSK_PATH = "/local/kuozhang-local/nsf-backup/openwhisk/bin/wsk"
+SSH_USER_NAME = auth.user_name
+SSH_PASSWD = auth.passwd
+INVOKER_PYTHON_PATH = config_local.invoker_py_path
+INVOKER_SOURCE_PATH = config_local.invoker_source_path
+INVOKER_PY_RPC_PORT = config_local.invoker_py_rpc_port
 
 
 class Core:
@@ -69,6 +82,7 @@ class Core:
         self.max_freq: int = max_freq
         self.min_freq: int = min_freq
         self.desired_freq: int = desired_freq
+
     def __str__(self):
         return f"NP:{self.num_pinned_container}"
 
@@ -96,15 +110,20 @@ class Invoker:
         # -------------rpc channel-----------------
         self.channel = grpc.insecure_channel(f"{self.hostname}:{self.RPC_PORT}")
         self.stub = invoker_service.InvokerServiceStub(channel=self.channel)
+        # -------------------------------------------
+        self.py_runtime_client = None
 
-    def __str__(self)->str:
-        core_str = "_".join( [core.__str__() for core in self.id_2_core.values()])
-        return (f"id:{self.id},host:{self.hostname},type:{self.type},num_container:[w{self.num_warm_container}b{self.num_busy_container}wi{self.num_warming_container}]"
-                f"\n[{core_str}]")
-    def __repr__(self)->str:
+    def __str__(self) -> str:
+        core_str = "_".join([core.__str__() for core in self.id_2_core.values()])
+        return (
+            f"id:{self.id},host:{self.hostname},type:{self.type},num_container:[w{self.num_warm_container}b{self.num_busy_container}wi{self.num_warming_container}]"
+            f"\n[{core_str}]")
+
+    def __repr__(self) -> str:
         return self.__str__()
 
-
+    def rpyc_get_container_stats(self) -> dict:
+        return pickle.loads(self.py_runtime_client.root.get_container_utilization())
 
     def rpc_add_container(self, action_name: str, pinned_core: List[int]) -> None:
         logging.info(f"Starting a new container for {action_name}, pin core: {pinned_core}")
@@ -152,8 +171,10 @@ class Container:
         self.id: str = str_id
         self.pinned_core: List[Core] = pinned_core
         self.invoker: Invoker = invoker
+
     def __repr__(self):
         return f"id:{self.id},pinnedCore:{[c.id for c in self.pinned_core]},invk_id:{self.invoker.id}"
+
 
 class Func:
     def __init__(self, id, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
@@ -293,6 +314,23 @@ class Cluster:
         self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
                                                    for invoker_id in self.id_2_invoker.keys()}
         logging.info("Env initialization done")
+        invoker_host_lst = [i.hostname for i in self.id_2_invoker.values()]
+        # initialize invoker python runtime
+        for host in invoker_host_lst:
+            # bug: use "" inside '', make the command in one line
+            subprocess.Popen(f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} "pkill -f stats_collect"',
+                             shell=True).wait()
+            p = subprocess.Popen(
+                f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} " nohup {INVOKER_PYTHON_PATH} {os.path.join(INVOKER_SOURCE_PATH, "python/invoker_runtime/stats_collect_server.py")} >nohup_ow.log  2>&1 &"',
+                shell=True)
+            (stdout, stderr) = p.communicate(timeout=10)
+            if p.returncode != 0:
+                logging.error(f"Starting invoker python runtime on host {host} fail, {stdout}, {stderr}")
+            else:
+                logging.info(f"Starting invoker python runtime on host {host} succeed, {stdout}, {stderr}")
+        time.sleep(5)
+        for invk in self.id_2_invoker.values():
+            invk.py_runtime_client = rpyc.connect(invk.hostname, INVOKER_PY_RPC_PORT)
 
     def _update_invoker_state(self):
         # update the invoker state after controller rpc update
@@ -514,15 +552,64 @@ class Cluster:
         return func_id
 
     # ----------for collecting runtime info---------
-    def get_avg_busy_container_utilization_per_type(self, func_ids: List):
+    def get_avg_busy_container_utilization_per_type(self, func_ids: List)->list[float]:
         # get avg container utilization per type for each function
-        pass
+        res = []
+        for func in func_ids:
+            utilization = []
+            invk_2_busy = self.func_2_busyinfo[func]
+            for invk, container_set in invk_2_busy.items():
+                if not container_set:
+                    continue
+                container_2_util = invk.rpyc_get_container_stats()
+                for contr in container_set:
+                    try:
+                        utilization.append(container_2_util[contr])
+                    except KeyError:
+                        logging.error(
+                            f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
+                        assert False
+            invk_2_warm = self.func_2_warminfo[func]
+            for invk, container_set in invk_2_warm.items():
+                if not container_set:
+                    continue
+                container_2_util = invk.rpyc_get_container_stats()
+                for contr in container_set:
+                    try:
+                        utilization.append(container_2_util[contr])
+                    except KeyError:
+                        logging.error(
+                            f"No container utilization record for warm container {contr} of function {func} on invoker: {invk.id}")
+                        assert False
+            if utilization:
+                res.append(mean(utilization))
+            else:
+                res.append(0)
+        return res
+
+def test_popen_remote():
+    host = "panic-cloud-xs-06.cs.rutgers.edu"
+    # p = subprocess.Popen(
+    #     f"sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host}"
+    #     f" 'nohup ls  > nohup.txt 2>&1 &'",
+    #     shell=True)
+    p = subprocess.Popen(
+        f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} " nohup {INVOKER_PYTHON_PATH} {os.path.join(INVOKER_SOURCE_PATH, "python/invoker_runtime/stats_collect_server.py")} >nohup_ow.log  2>&1 &"',
+        shell=True)
+    (stdout, stderr) = p.communicate(timeout=5)
+    if p.returncode != 0:
+        logging.error(f"Starting invoker python runtime on host {host} fail, {stdout}, {stderr}")
+    else:
+        logging.info(f"Starting invoker python runtime on host {host} succeed, {stdout}, {stderr}")
+    exit()
 
 
 if __name__ == "__main__":
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
-    #cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
+    # cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
     while True:
-        cluster.step_dummy()
-        cluster.print_state()
+        pprint.pprint(cluster.id_2_invoker[0].rpyc_get_container_stats())
+        time.sleep(1)
+        # cluster.step_dummy()
+        # cluster.print_state()
