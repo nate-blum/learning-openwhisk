@@ -16,9 +16,9 @@ class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSyst
   private val clientSettings: GrpcClientSettings = GrpcClientSettings.connectToServiceAt(lbConfig.agentIp, lbConfig.routingPort).withTls(false)
   val client: RoutingService = RoutingServiceClient(clientSettings)
 
-  def executeRoutingRequest(actionName: String): Option[GetInvocationRouteResponse] = {
+  def executeRoutingRequest(actionName: String, activationId: String): Option[GetInvocationRouteResponse] = {
     logging.info(this, s"executing routing request for action: $actionName")
-    val request: Try[GetInvocationRouteResponse] = Await.ready(client.getInvocationRoute(GetInvocationRouteRequest(actionName)), 1.seconds).value.get
+    val request: Try[GetInvocationRouteResponse] = Await.ready(client.getInvocationRoute(GetInvocationRouteRequest(actionName, activationId)), 1.seconds).value.get
     request match {
       case Success(value) =>
         Some(value)

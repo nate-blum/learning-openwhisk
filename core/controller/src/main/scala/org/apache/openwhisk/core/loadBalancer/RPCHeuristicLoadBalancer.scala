@@ -146,7 +146,7 @@ class RPCHeuristicLoadBalancer(
     println(lbConfig)
     logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
 
-    val invoker: Option[InvokerInstanceId] = routingClient.executeRoutingRequest(action.name.name) match {
+    val invoker: Option[InvokerInstanceId] = routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString()) match {
       case Some(v) =>
         schedulingState.invokers.find(_.id.instance == v.invokerInstanceId).map(_.id)
       case None =>

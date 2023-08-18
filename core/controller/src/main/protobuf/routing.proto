@@ -42,6 +42,7 @@ message GetArrivalInfoResponse {
 
 message GetInvocationRouteRequest {
   string actionName = 1;
+  string activationId = 2;
 }
 
 message GetInvocationRouteResponse {
