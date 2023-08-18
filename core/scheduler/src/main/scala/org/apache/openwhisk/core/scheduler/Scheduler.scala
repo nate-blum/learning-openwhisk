@@ -88,6 +88,7 @@ class Scheduler(schedulerId: SchedulerInstanceId, schedulerEndpoints: SchedulerE
   /** Stores an activation in the database. */
   private val store = (tid: TransactionId, activation: WhiskActivation, context: UserContext) => {
     implicit val transid: TransactionId = tid
+    logging.info(this, "storing scheduler")
     activationStore.store(activation, context)(tid, notifier = None).andThen {
       case Success(doc) => logging.info(this, s"save ${doc} successfully")
       case Failure(t)   => logging.error(this, s"failed to save activation $activation, error: ${t.getMessage}")

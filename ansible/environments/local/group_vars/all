@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-#openwhisk_tmp_dir: "/local/nate-local/openwhisk"
+openwhisk_tmp_dir: "/local/nate-local/openwhisk"
 config_root_dir: "{{ openwhisk_tmp_dir }}/wskconf"
 whisk_logs_dir: "{{ openwhisk_tmp_dir }}/wsklogs"
 coverage_enabled: "{{ lookup('env', 'GRADLE_COVERAGE') | default('false', true) | bool}}"
@@ -54,7 +54,6 @@ controller_managed_fraction: 1.0
 controller_blackbox_fraction: 1.0
 controller_loadbalancer_managed_fraction: 1.0
 controller_loadbalancer_blackbox_fraction: 1.0
-controller_send_all_update_requests: false
 
 kafka_heap: '8g'
 kafka_network_threads: 8
@@ -66,4 +65,4 @@ limit_invocations_per_minute: 6000
 limit_invocations_concurrent: 3000
 limit_fires_per_minute: 6000
 limit_sequence_max_length: 5000
-#ansible_python_interpreter: /usr/bin/python3.10
+ansible_python_interpreter: /usr/bin/python3.10
