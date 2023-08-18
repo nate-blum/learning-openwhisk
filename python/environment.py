@@ -39,6 +39,7 @@ from load_balance import start_rpc_routing_server_process
 import state_collector
 from power import PDU_reader
 from workload_generator import start_workload_process
+from db_client import DB
 
 signal_queue = Queue()  # sending signal to control workload generator's reset/start
 SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
@@ -223,6 +224,7 @@ class Cluster:
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.state_info = None
         self.cluster_peak_pw = None
+        self.db = DB()
 
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
@@ -498,6 +500,7 @@ class Cluster:
 
     def get_sla_latency_for_reward(self):
         pass
+
 
     def compute_utilization(self) -> Dict:
         pass

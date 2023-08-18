@@ -19,4 +19,5 @@ Important Configuration Variables:
 
 # TEST
 - add single container
-- 
+# TODO TEST:
+- auto cold start
