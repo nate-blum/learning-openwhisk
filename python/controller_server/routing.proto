@@ -33,6 +33,8 @@ service RoutingService {
   rpc GetArrivalInfo (EmptyRequest) returns (GetArrivalInfoResponse) {}
 
   rpc NotifyClusterInfo(NotifyClusterInfoRequest) returns (NotifyClusterInfoResponse) {}
+
+  rpc GetInvocationDict (EmptyRequest) returns (GetInvocationDictResponse) {}
 }
 
 message EmptyRequest {} // placeholder type for request
@@ -62,4 +64,13 @@ message NotifyClusterInfoRequest {
 }
 message NotifyClusterInfoResponse {
   int32 result_code = 1;
+}
+
+message GetInvocationDictResponse {
+  map<string,  InvocationRecordList > func2_invocationRecordList = 1;
+}
+
+message InvocationRecordList {
+  repeated string invocationId = 1;
+  repeated uint64 arrivalTime = 2;
 }

@@ -5,6 +5,7 @@ import config_local
 import rpyc
 import pickle
 from statistics import mean
+from collections import defaultdict
 
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
@@ -197,6 +198,7 @@ class Cluster:
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
         self.funcname_2_id = {}
+        self.func_2_sla: Dict[str, int] = {}
 
         self.id_2_invoker: Dict[int, Invoker] = {}
         self.type_2_invoker: Dict[str, Set[Invoker]] = {}
@@ -225,6 +227,8 @@ class Cluster:
         self.state_info = None
         self.cluster_peak_pw = None
         self.db = DB()
+        self.last_query_db_since = round(time.time() * 1000)
+        self.func_2_invocation2Arrival: dict[str, dict[str, int]] = defaultdict(dict)  # arrival time is in nanosecond
 
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
@@ -457,9 +461,11 @@ class Cluster:
         time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
 
         state = self.get_obs()
-        sla_latency = self.get_sla_latency_for_reward()  # contain all function, not jut active function
-        reward_dict = compute_reward_using_overall_stat(get_power=self.pdu.get_average_power,
-                                                        func_2_latencies=sla_latency,
+        db_activations = self.update_activation_record()  # contain all function, not jut active function
+        reward_dict = compute_reward_using_overall_stat(db_activations=db_activations,
+                                                        func_2_invocation2Arrival=self.func_2_invocation2Arrival,
+                                                        func_2_sla=self.func_2_sla,
+                                                        get_power=self.pdu.get_average_power,
                                                         cluster_peak_pw=self.cluster_peak_pw,
                                                         latency_factor=RATIO_BASED_LATENCY_FACTOR)
         return state, reward_dict, False, False, self.state_info
@@ -498,9 +504,18 @@ class Cluster:
             res_dict[invoker.type][2] += len(set_container)
         return res_dict
 
-    def get_sla_latency_for_reward(self):
-        pass
-
+    # TODO, validate the query latency is acceptable in training
+    def update_activation_record(self) -> list[dict]:
+        resp: routing_pb2.GetInvocationDictResponse = self.routing_stub.GetInvocationDict(routing_pb2.EmptyRequest())
+        curr_time = round(time.time() * 1000) # database time is in millisecond
+        db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs']
+        self.last_query_db_since = curr_time  # guarantee no missing of record in database
+        # update the local invocation dict
+        for func, listRecord in resp.func2_invocationRecordList.items():
+            for invocation, arrTime in zip(listRecord.invocationId, listRecord.arrivalTime):
+                assert invocation not in self.func_2_invocation2Arrival[func]
+                self.func_2_invocation2Arrival[func][invocation] = arrTime # the time is in nanosecond
+        return db_activations
 
     def compute_utilization(self) -> Dict:
         pass
@@ -546,6 +561,7 @@ class Cluster:
                                         mem_req=kwargs['mem_req'],
                                         cpu_req=kwargs['cpu_req'], sla=kwargs['sla'],
                                         invoker_2_referenceExecTime=kwargs['invoker_2_referenceExecTime'])
+        self.func_2_sla[name] = kwargs['sla']
         self.intId_2_funcStrName[func_id] = name
         self.funcname_2_id[name] = func_id
         self.func_2_warminfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
@@ -555,7 +571,7 @@ class Cluster:
         return func_id
 
     # ----------for collecting runtime info---------
-    def get_avg_busy_container_utilization_per_type(self, func_ids: List)->list[float]:
+    def get_avg_busy_container_utilization_per_type(self, func_ids: List) -> list[float]:
         # get avg container utilization per type for each function
         res = []
         for func in func_ids:
@@ -589,6 +605,7 @@ class Cluster:
             else:
                 res.append(0)
         return res
+
 
 def test_popen_remote():
     host = "panic-cloud-xs-06.cs.rutgers.edu"

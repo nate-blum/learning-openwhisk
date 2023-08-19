@@ -46,6 +46,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
+        self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
+        self.activation_dict_lock = Lock()
         #
         self.cluster_update_channel = grpc.insecure_channel(f'localhost:{cluster_update_rpc_server_port}')
         self.cluster_update_stub = clusterstate_pb2_grpc.ClusterStateServiceStub(self.cluster_update_channel)
@@ -87,8 +89,12 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
 
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
         func_id_str: str = request.actionName
+        activation_id: str = request.activationId
         logging.info(f"Received routing request from OW controller, {func_id_str}")
         t = time_ns()
+        #assert activation_id not in self.func_2_activationDict[func_id_str]
+        with self.activation_dict_lock:
+            self.func_2_activationDict[func_id_str][activation_id] = t
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
         res: int = self._select_invoker_to_dispatch(func_id_str)
@@ -154,7 +160,16 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                     ema = self.ARRIVAL_EMA_COEFF * delta[i] + (1 - self.ARRIVAL_EMA_COEFF) * ema
                 res[func_id] = ema / (most_recent_bucket_arrival + 1e-6)
         return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s, func_2_arrivalEma=res)
-
+    def GetInvocationDict(self, request, context):
+        respond = routing_pb2.GetInvocationDictResponse()  # TODO, testing
+        with self.activation_dict_lock:
+            for func, invocation_dict in self.func_2_activationDict.items():
+                record_list = routing_pb2.InvocationRecordList()
+                record_list.invocationId.extend(invocation_dict.keys())
+                record_list.arrivalTime.extend(invocation_dict.values())
+                respond.func2_invocationRecordList[func] = record_list
+            self.func_2_activationDict.clear()
+            return respond
 
 def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,
                                      default_svr_type: str, q_update_timer_interval_sec: float,
