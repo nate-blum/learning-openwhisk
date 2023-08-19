@@ -181,6 +181,7 @@ protected[actions] trait SequenceActions {
             }
           }
 
+          logging.info(this, "storing sequence actions")
           activationStore.storeAfterCheck(seqActivation, blockingSequence, None, None, context)(
             transid,
             notifier = None,

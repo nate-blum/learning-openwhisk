@@ -34,7 +34,7 @@ import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size.SizeLong
 import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
-import org.apache.openwhisk.core.loadBalancer.grpc.{RoutingClient,ClusterStateClient}
+import org.apache.openwhisk.core.loadBalancer.grpc.{ClusterStateClient, RoutingClient}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.grpc.{ActionStatePerInvoker}
 import org.apache.openwhisk.spi.SpiLoader
@@ -146,17 +146,15 @@ class RPCHeuristicLoadBalancer(
     println(lbConfig)
     logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
 
-    val invoker: Option[InvokerInstanceId] = routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString()) match {
-      case Some(v) =>
-        schedulingState.invokers.find(_.id.instance == v.invokerInstanceId).map(_.id)
-      case None =>
-        None
-    }
+    val invoker: Future[Option[InvokerInstanceId]] =
+      routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString())
+        .map(res => schedulingState.invokers.find(_.id.instance == res.invokerInstanceId)
+          .map(_.id))
 
-    logging.info(this, if (invoker.isDefined) s"found invoker ${invoker.get}" else "no invoker found")
+    invoker flatMap {
+      case Some(id: InvokerInstanceId) => // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
+        logging.info(this, s"found invoker $id")
 
-    invoker map {
-      id => // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
         val memoryLimit = action.limits.memory
         val memoryLimitInfo = if (memoryLimit == MemoryLimit()) {
           "std"
@@ -174,7 +172,7 @@ class RPCHeuristicLoadBalancer(
           s"scheduled activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}', mem limit ${memoryLimit.megabytes} MB (${memoryLimitInfo}), time limit ${timeLimit.duration.toMillis} ms (${timeLimitInfo}) to ${invoker}")
         val activationResult = setupActivation(msg, action, id)
         sendActivationToInvoker(messageProducer, msg, id).map(_ => activationResult)
-    } getOrElse {
+      case _ =>
         logging.error(
           this,
           s"failed to schedule activation ${msg.activationId}, action '${msg.action.asString}', ns '${msg.user.namespace.name.asString}' - invokers to use: ${schedulingState.invokerClusterState.toString}")

@@ -107,7 +107,7 @@ controller:
   agentIp: "{{agentIp | default('192.168.100.2')}}"
   routingPort: "{{routingPort | default(50051)}}"
   clusterStatePort: "{{clusterStatePort | default(50052)}}"
-  sendAllUpdateRequests: "{{ controller_send_all_update_requests | default(true) }}"
+  sendAllUpdateRequests: "{{ sendAllUpdateRequests | default(true) }}"
 
   timeoutFactor: "{{ controller_timeout_factor | default(2) }}"
   timeoutAddon: "{{ controller_timeout_addon | default('1 m') }}"
