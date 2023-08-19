@@ -46,7 +46,9 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
-        self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
+        #self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
+        self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
+                                      'hello2': {'invocation3': 3000}}
         self.activation_dict_lock = Lock()
         #
         self.cluster_update_channel = grpc.insecure_channel(f'localhost:{cluster_update_rpc_server_port}')

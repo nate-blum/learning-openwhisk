@@ -6,6 +6,7 @@ import rpyc
 import pickle
 from statistics import mean
 from collections import defaultdict
+from pprint import pprint
 
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
@@ -627,9 +628,12 @@ def test_popen_remote():
 if __name__ == "__main__":
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
+    cluster.update_activation_record()
+    pprint(cluster.func_2_invocation2Arrival)
+
     # cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
-    while True:
-        pprint.pprint(cluster.id_2_invoker[0].rpyc_get_container_stats())
-        time.sleep(1)
+    # while True:
+    #     pprint.pprint(cluster.id_2_invoker[0].rpyc_get_container_stats())
+    #     time.sleep(1)
         # cluster.step_dummy()
         # cluster.print_state()
