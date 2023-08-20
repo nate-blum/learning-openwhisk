@@ -16,8 +16,14 @@ Important Configuration Variables:
 
 # TODO
 - Make sure invoker id from Wsk runtime match agent runtime (e.g., invoker0 is xe?).
+- How to Reset cluster for each function
+- **Check every feature & stats are reset proper at each step**
+- check if all the update are thread safe
 
 # TEST
 - add single container
 # TODO TEST:
 - auto cold start
+
+# Different From Simulator
+- Simulator function selection is P95, reward is P99 <--> Real wsk all use p99

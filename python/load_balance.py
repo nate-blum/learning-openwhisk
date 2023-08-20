@@ -28,7 +28,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                  ema_time_window_nsec: int, ema_bucket_nsec: int, arrival_ema_coeff: float,
                  cluster_update_rpc_server_port: str):
         # ----------------------------------------Configs-------------------------------
-        self.DEFAULT_SERVER_TYPE: str = default_server_type
+        #self.DEFAULT_SERVER_TYPE: str = default_server_type
         self.TIMER_INTERVAL_SEC: float = q_update_timer_interval_sec
         self.ARRIVAL_Q_TIME_RANGE_LIMIT: int = arrival_q_time_range_limit
         self.EMA_TIME_WINDOW_NSEC: int = ema_time_window_nsec
@@ -46,9 +46,9 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
-        #self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
-        self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
-                                      'hello2': {'invocation3': 3000}}
+        self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
+        # self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
+        #                               'hello2': {'invocation3': 3000}} # for testing purpose
         self.activation_dict_lock = Lock()
         #
         self.cluster_update_channel = grpc.insecure_channel(f'localhost:{cluster_update_rpc_server_port}')
@@ -92,10 +92,11 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
         func_id_str: str = request.actionName
         activation_id: str = request.activationId
+        assert "invokerHealthTestAction" != func_id_str[:23]
         logging.info(f"Received routing request from OW controller, {func_id_str}")
-        t = time_ns()
         #assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:
+            t = time_ns()
             self.func_2_activationDict[func_id_str][activation_id] = t
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
@@ -122,7 +123,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             time.sleep(interval_sec)
 
     def GetArrivalInfo(self, request, context):
-        logging.info("Receive get arrival info RPC")
+        logging.info("Receive get arrival info RPC from main process")
         assert self.timer_update_arrival_info_thread.is_alive(), "Timer_update_arrival_info thread dead"  # periodic check
         # call by the agent to collect arrival info, this won't lock a lot of time as the background helper thread
         res_1s = {}
@@ -148,7 +149,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             curr_time_ns = time_ns()
             for func_id, arrival_deque in self.func_2_arrivalQueue.items():
                 delta = [0] * num_buckets
-                for t in arrival_deque:
+                for t in arrival_deque: # [new old]
                     bucket_index = (curr_time_ns - t) // self.BUCKET_NSEC
                     if bucket_index < num_buckets:
                         delta[bucket_index] += 1
@@ -162,14 +163,12 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                     ema = self.ARRIVAL_EMA_COEFF * delta[i] + (1 - self.ARRIVAL_EMA_COEFF) * ema
                 res[func_id] = ema / (most_recent_bucket_arrival + 1e-6)
         return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s, func_2_arrivalEma=res)
-    def GetInvocationDict(self, request, context):
-        respond = routing_pb2.GetInvocationDictResponse()  # TODO, testing
+    def GetInvocationDict(self, request, context): # RPC call tested from python runtime
+        respond = routing_pb2.GetInvocationDictResponse()
         with self.activation_dict_lock:
             for func, invocation_dict in self.func_2_activationDict.items():
-                record_list = routing_pb2.InvocationRecordList()
-                record_list.invocationId.extend(invocation_dict.keys())
-                record_list.arrivalTime.extend(invocation_dict.values())
-                respond.func2_invocationRecordList[func] = record_list
+                respond.func2_invocationRecordList[func].invocationId.extend(invocation_dict.keys())
+                respond.func2_invocationRecordList[func].arrivalTime.extend(invocation_dict.values())
             self.func_2_activationDict.clear()
             return respond
 

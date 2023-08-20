@@ -7,12 +7,14 @@ from controller_server.clusterstate_pb2 import UpdateClusterStateRequest, Update
     GetRoutingColdStartRequest, \
     GetRoutingColdStartResponse
 
+from threading import Lock
 import environment as env
 
 
 class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer):
     def __init__(self, cluster: env.Cluster):
         self.cluster: env.Cluster = cluster
+        self.stats_update_lock = Lock()
 
     def UpdateClusterState(self, request: UpdateClusterStateRequest, context):
         # container set get entirely updated on each call (override)
@@ -71,7 +73,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
             except ValueError:
                 logging.info(f"TODO: why this exception happened")
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
-        #logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
+        # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
         return UpdateClusterStateResponse()
 
     def GetRoutingColdStart(self, request: GetRoutingColdStartRequest, context):
@@ -80,6 +82,8 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # No invoker has enough memory
         logging.info("Get routing cold start RPC request")
         func_str = request.func_str
+        with self.stats_update_lock:
+            self.cluster.stats.func_2_cold_start[func_str] += 1
         try:
             mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
         except KeyError:  # the function is not registered, should be a invokerHealthTestAction0

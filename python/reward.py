@@ -1,23 +1,26 @@
 import logging
-from typing import Dict, List, Tuple, Callable
+from typing import Dict, Callable
 import numpy as np
 from collections import defaultdict
 import time
+from training_configs import SLA_PERCENTAGE
 
 
 def compute_reward_using_overall_stat(db_activations: list, func_2_invocation2Arrival: dict[str, dict[str, int]],
                                       func_2_sla, get_power: Callable,
-                                      cluster_peak_pw: float, latency_factor: float) -> Dict[
-    str, float]:
+                                      cluster_peak_pw: float, latency_factor: float) -> tuple[
+    Dict[str, float], dict[str, float], defaultdict[str, defaultdict[str, list]]]:
     # pass a callable so that delay the computation of power as late as possible to collect as many records as possible
 
     rewards = {}
-    preserve_ratio = compute_latency_reward_ratio_based_wsk(db_activations,func_2_invocation2Arrival,func_2_sla)
+    preserve_ratio, func_2_tail_latency, func_2_type2latencyList = compute_latency_reward_ratio_based_wsk(
+        db_activations,
+        func_2_invocation2Arrival, func_2_sla)
     power_ratio = compute_cluster_power_ratio(total_pw=get_power(), cluster_peak=cluster_peak_pw)
     rewards['power'] = -power_ratio * (1 - latency_factor)
     rewards['sla'] = preserve_ratio * latency_factor
     rewards['all'] = rewards['sla'] + rewards['power']
-    return rewards
+    return rewards, func_2_tail_latency, func_2_type2latencyList
 
 
 # def compute_latency_reward_overall_stat(funcid_2_latencies: Dict[int, List[Tuple]]):
@@ -38,9 +41,11 @@ def compute_reward_using_overall_stat(db_activations: list, func_2_invocation2Ar
 
 
 def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocation2Arrival: dict[str, dict[str, int]],
-                                           func_2_sla):
-    func_2_type2Latency = defaultdict(lambda: defaultdict(list))
-    latency_dict = defaultdict(list)  # {function: [...latencies...]}
+                                           func_2_sla) -> tuple[
+    float, dict[str, float], defaultdict[str, defaultdict[str, list]]]:
+    func_2_type2Latency: defaultdict[str, defaultdict[str, list]] = defaultdict(
+        lambda: defaultdict(list))  # TODO,TODO,TODO
+    func_2_latencyList: defaultdict[str, list] = defaultdict(list)  # {function: [...latencies...]}
     # process latency record in the database
     for activation in db_activations:
         if activation['name'][:23] == 'invokerHealthTestAction':
@@ -52,8 +57,8 @@ def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocati
                 waitTime = item['value']
                 break
         latency = activation['duration'] + waitTime  # in millisecond
-        latency_dict[func_name].append(latency)
-        #func_2_type2Latency[func_name][activation['type']].append(latency) #TODO, to finish
+        func_2_latencyList[func_name].append(latency)
+        # func_2_type2Latency[func_name][activation['type']].append(latency) #TODO, to finish
         # remove the activation queried from database respond from local invocation dict
         # the db record must be in the local invocation dict
         try:
@@ -65,17 +70,20 @@ def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocati
     curr_time = time.time_ns()
     for func, invocation2Arrival in func_2_invocation2Arrival:
         for invocation, arrivalTime in invocation2Arrival.items():
-            latency_dict[func].append(round((curr_time - arrivalTime) / 1_000_000))  # convert nanosecond to millisecond
+            func_2_latencyList[func].append(
+                round((curr_time - arrivalTime) / 1_000_000))  # convert nanosecond to millisecond
     preserve_ratios = []
-    for func, latency_lst in latency_dict.items():
+    func_2_tail_latency: dict[str, float] = {}
+    for func, latency_lst in func_2_latencyList.items():
         if not latency_lst:
             continue
-        p99 = np.percentile(latency_lst, 99)
+        p99 = np.percentile(latency_lst, SLA_PERCENTAGE)
+        func_2_tail_latency[func] = p99
         if p99 < func_2_sla[func]:
             preserve_ratios.append(1)
         else:
             preserve_ratios.append(func_2_sla[func] / p99)
-    return np.mean(preserve_ratios)
+    return float(np.mean(preserve_ratios)), func_2_tail_latency, func_2_type2Latency
 
 
 def compute_cluster_power_ratio(total_pw: float, cluster_peak: float):

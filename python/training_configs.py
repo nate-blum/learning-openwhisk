@@ -13,7 +13,7 @@ trace_root = config_local.trace_root_path
 wandb_group_name = "Interference_AzureTop5funcs_ratioReward"
 
 note = "rewardRatio0.5_T100_2ContainerPerCore_" + config.CONFIG_NOTE
-
+SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
 num_envs = 10
 trajectory_len = 100
