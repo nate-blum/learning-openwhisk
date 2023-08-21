@@ -18,7 +18,7 @@ class WorkloadGenerator:
         self.trace = pd.read_csv(trace_file, header=None)
         self.trace_size = len(self.trace)
         self.ow_client = OpenwhiskClient(wsk_path)
-        self.last_req_t = time()
+        self.last_req_t = 0
         # ---------------------------------------
         self.binary_data_cache = {}
         self.sto_stream = self.setup_logging()
@@ -54,25 +54,27 @@ class WorkloadGenerator:
                     if not self.q.empty():
                         signal = self.q.get()
                         if signal[0] == "start":
-                            self.state = "start"
                             logging.info(f"workload FSM state change: {self.state}->Start")
+                            self.state = "start"
                         else:  # must be signal[0] == "reset"
                             self.line_pointer = signal[1]
                             self.last_req_t = 0
+                            self.count = 0
                             logging.info(f"workload FSM state change: {self.state}->Reset")
                 case "start":
                     if not self.q.empty():  # new signal comes in
                         signal = self.q.get()
                         if signal[0] == "reset":
+                            logging.info(f"workload FSM state change: {self.state}->Reset")
                             self.state = "reset"
                             self.line_pointer = signal[1]
+                            self.count = 0
                             self.last_req_t = 0
-                            logging.info(f"workload FSM state change: {self.state}->Reset")
                             continue
                     self.send_request()
                     self.count += 1
                     if self.count > self.MAX_INVOCATION:
-                        break
+                        sleep(10)
 
     def send_request(self):
         mod_line = (self.line_pointer + self.trace_size) % self.trace_size
@@ -80,10 +82,11 @@ class WorkloadGenerator:
         elapse_to_prev = self.trace.iloc[mod_line, 1]  # in millisecond
         data_file = self.trace.iloc[mod_line, 2]  # image data file
         request_type = self.trace.iloc[mod_line, 3]
-        logging.info(f"Sending request: {func_name}")
-        if (
-                diff := time() - self.last_req_t) <= elapse_to_prev / 1000:  # assuming the interval in trace is in millisecond
-            sleep(diff)
+        elapse_to_prev_sec =elapse_to_prev / 1000
+        if (diff := time() - self.last_req_t) < elapse_to_prev_sec:  # assuming the interval in trace is in millisecond
+            #logging.info(f"Sleeping {elapse_to_prev_sec - diff} seconds")
+            sleep(elapse_to_prev_sec - diff)
+        logging.info(f"Sending request----------->: {func_name}")
         match request_type:
             case "binary":
                 try:
@@ -94,7 +97,7 @@ class WorkloadGenerator:
                 self.ow_client.invoke_binary_data(action=func_name, data=data)
             case _:
                 self.ow_client.invoke_common(action=func_name)
-        mod_line += 1
+        self.line_pointer += 1
         self.last_req_t = time()
 
 

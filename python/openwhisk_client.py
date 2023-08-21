@@ -1,5 +1,8 @@
 import subprocess
+import urllib3
+urllib3.disable_warnings()
 from requests_futures.sessions import FuturesSession
+
 
 
 class OpenwhiskClient:

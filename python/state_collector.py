@@ -1,7 +1,6 @@
 # will run in the training agent process
-
+import pprint
 import logging
-from controller_server import clusterstate_pb2
 from controller_server import clusterstate_pb2_grpc, routing_pb2
 from controller_server.clusterstate_pb2 import UpdateClusterStateRequest, UpdateClusterStateResponse, \
     GetRoutingColdStartRequest, \
@@ -29,7 +28,6 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                 invoker.free_mem = info.freeMemoryMB  # atomic operation, no need of lock
                 invoker.reset_core_pinning_count()  # reset core pinning info
                 for func_id_str, action_state in info.actionStates.items():
-                    logging.info(f"State update rpc has function that has not been registered in agent: {func_id_str}")
                     # busy, warm,      [...str...]
                     for container_status, container_lst in action_state.stateLists.items():
                         containers = [
@@ -76,6 +74,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
         return UpdateClusterStateResponse()
 
+    # NOTE, cold start is realized by routing to a specific invoker, which might not lead to a Real cold-start
     def GetRoutingColdStart(self, request: GetRoutingColdStartRequest, context):
         # get all invokers whose memory is enough and the type match default type, if exist find a proper one
         # get all invoker whose memory is enough, if exist find a proper one
@@ -87,6 +86,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         try:
             mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
         except KeyError:  # the function is not registered, should be a invokerHealthTestAction0
+            logging.warning(f"The function is not registered, {func_str}")
             return GetRoutingColdStartResponse(invoker_selected=0)  # TODO, handle system action function
         with self.cluster.cluster_state_lock:
             invoker_meet_mem = [invoker for invoker in self.cluster.id_2_invoker.values() if invoker.free_mem > mem_req]
@@ -97,7 +97,9 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_of_default_type).id
                 else:
                     res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_meet_mem).id
+                logging.info(f"Decided to cold start on invoker {res_invoker}")
             else:
                 # TODO, how to handle, how the invoker handle cold start when there is not enough resource
                 res_invoker = 0
+                logging.info(f"Not enough resource, decided to cold start on invoker {res_invoker}")
         return GetRoutingColdStartResponse(invoker_selected=res_invoker)

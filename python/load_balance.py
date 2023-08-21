@@ -101,6 +101,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
         res: int = self._select_invoker_to_dispatch(func_id_str)
+        logging.info(f"Decide routing to invoker =====> {res}")
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
