@@ -45,11 +45,12 @@ select_func_weight = {
 }
 
 workload_config = {
-    'workload_line_start': 10,
+    'workload_line_start': 0,
     'random_start': True,
     #'trace_file': os.path.join(trace_root, 'faas_top5funcs_day2_scaledown_300.txt')
-    'trace_file': os.path.join(trace_root, 'workload_multiple_funcs_43111_range18000000_scale80.csv')
+    #'trace_file': os.path.join(trace_root, 'workload_multiple_funcs_43111_range18000000_scale80.csv')
     # 'trace_file': os.path.join(trace_root, 'workload_range3600000_scale100.csv')
+    'trace_file': './workload/test_workload.csv'
 }
 initialize_env = {
     'whether_initialize_env': True,

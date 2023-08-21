@@ -23,7 +23,7 @@ default_svr_type = 'xs'
 # separate in case a function can have multiple SLA
 workload_characteristics = {
     'sla': {
-        'helloPython': 1000
+        'func1': 1000
     }
 }
 

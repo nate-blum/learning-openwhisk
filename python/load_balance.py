@@ -64,14 +64,14 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             os.path.join(config_local.wsk_log_dir, 'routingServiceLog_{}'.format(self.time_stamp)), mode='w')
         file_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
         file_handler.setFormatter(file_logger_formatter)
-        file_handler.setLevel(logging.DEBUG)
-        # stream handler
-        # stream_handler = logging.StreamHandler(sys.stdout)
-        # stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
-        # stream_handler.setFormatter(stream_logger_formatter)
-        # stream_handler.setLevel(logging.DEBUG)
-        # must be called in main thread before any sub-thread starts
-        logging.basicConfig(level=logging.DEBUG, handlers=[file_handler])
+        file_handler.setLevel(logging.INFO)
+        #stream handler
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
+        stream_handler.setFormatter(stream_logger_formatter)
+        stream_handler.setLevel(logging.INFO)
+        #must be called in main thread before any sub-thread starts
+        logging.basicConfig(level=logging.INFO, handlers=[stream_handler,file_handler])
 
     def _select_invoker_to_dispatch(self, func_id_str: str) -> int:
         # NOTE,Current heuristic: route to a invoker with the probability proportional to how many container
