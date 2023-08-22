@@ -1161,7 +1161,7 @@ object ContainerProxy {
     val binding =
       job.msg.action.binding.map(f => Parameters(WhiskActivation.bindingAnnotation, JsString(f.asString)))
 
-    WhiskActivation(
+    val activation = WhiskActivation(
       activationId = job.msg.activationId,
       namespace = job.msg.user.namespace.name.toPath,
       subject = job.msg.user.subject,
@@ -1180,6 +1180,8 @@ object ContainerProxy {
           causedBy ++ initTime ++ waitTime ++ binding
       },
       instanceId = Some(instance.instance))
+    println(activation)
+    activation
   }
 
   /**
