@@ -8,7 +8,7 @@ import org.apache.openwhisk.grpc._
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContextExecutor
-import scala.util.{Failure, Success}
+import scala.util.{Failure}
 
 class ClusterStateClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSystem: ActorSystem, logging: Logging) {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
