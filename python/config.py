@@ -23,7 +23,7 @@ default_svr_type = 'xs'
 # separate in case a function can have multiple SLA
 workload_characteristics = {
     'sla': {
-        'helloPython': 1000
+        'func1': 1000
     }
 }
 
@@ -55,7 +55,7 @@ workload_characteristics = {
 #               'sla': 1000},
 # }
 func_spec_dict = {
-    "helloPython": {'name': "helloPython", 'namesp': "guest", 'mem_req': 256, 'cpu_req': 1,
+    "func1": {'name': "func1", 'namesp': "guest", 'mem_req': 256, 'cpu_req': 1,
                     'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
                     'invoker_2_referenceExecTime': {'xs': 800, 'xe': 500},
                     'sla': 1000},

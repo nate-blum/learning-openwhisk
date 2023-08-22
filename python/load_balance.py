@@ -28,7 +28,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                  ema_time_window_nsec: int, ema_bucket_nsec: int, arrival_ema_coeff: float,
                  cluster_update_rpc_server_port: str):
         # ----------------------------------------Configs-------------------------------
-        self.DEFAULT_SERVER_TYPE: str = default_server_type
+        #self.DEFAULT_SERVER_TYPE: str = default_server_type
         self.TIMER_INTERVAL_SEC: float = q_update_timer_interval_sec
         self.ARRIVAL_Q_TIME_RANGE_LIMIT: int = arrival_q_time_range_limit
         self.EMA_TIME_WINDOW_NSEC: int = ema_time_window_nsec
@@ -46,6 +46,10 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
+        self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
+        # self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
+        #                               'hello2': {'invocation3': 3000}} # for testing purpose
+        self.activation_dict_lock = Lock()
         #
         self.cluster_update_channel = grpc.insecure_channel(f'localhost:{cluster_update_rpc_server_port}')
         self.cluster_update_stub = clusterstate_pb2_grpc.ClusterStateServiceStub(self.cluster_update_channel)
@@ -60,14 +64,14 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             os.path.join(config_local.wsk_log_dir, 'routingServiceLog_{}'.format(self.time_stamp)), mode='w')
         file_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
         file_handler.setFormatter(file_logger_formatter)
-        file_handler.setLevel(logging.DEBUG)
-        # stream handler
-        # stream_handler = logging.StreamHandler(sys.stdout)
-        # stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
-        # stream_handler.setFormatter(stream_logger_formatter)
-        # stream_handler.setLevel(logging.DEBUG)
-        # must be called in main thread before any sub-thread starts
-        logging.basicConfig(level=logging.DEBUG, handlers=[file_handler])
+        file_handler.setLevel(logging.INFO)
+        #stream handler
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
+        stream_handler.setFormatter(stream_logger_formatter)
+        stream_handler.setLevel(logging.INFO)
+        #must be called in main thread before any sub-thread starts
+        logging.basicConfig(level=logging.INFO, handlers=[stream_handler,file_handler])
 
     def _select_invoker_to_dispatch(self, func_id_str: str) -> int:
         # NOTE,Current heuristic: route to a invoker with the probability proportional to how many container
@@ -87,11 +91,17 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
 
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
         func_id_str: str = request.actionName
+        activation_id: str = request.activationId
+        assert "invokerHealthTestAction" != func_id_str[:23]
         logging.info(f"Received routing request from OW controller, {func_id_str}")
-        t = time_ns()
+        #assert activation_id not in self.func_2_activationDict[func_id_str]
+        with self.activation_dict_lock:
+            t = time_ns()
+            self.func_2_activationDict[func_id_str][activation_id] = t
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
         res: int = self._select_invoker_to_dispatch(func_id_str)
+        logging.info(f"Decide routing to invoker =====> {res}")
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
@@ -114,7 +124,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             time.sleep(interval_sec)
 
     def GetArrivalInfo(self, request, context):
-        logging.info("Receive get arrival info RPC")
+        logging.info("Receive get arrival info RPC from main process")
         assert self.timer_update_arrival_info_thread.is_alive(), "Timer_update_arrival_info thread dead"  # periodic check
         # call by the agent to collect arrival info, this won't lock a lot of time as the background helper thread
         res_1s = {}
@@ -140,7 +150,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             curr_time_ns = time_ns()
             for func_id, arrival_deque in self.func_2_arrivalQueue.items():
                 delta = [0] * num_buckets
-                for t in arrival_deque:
+                for t in arrival_deque: # [new old]
                     bucket_index = (curr_time_ns - t) // self.BUCKET_NSEC
                     if bucket_index < num_buckets:
                         delta[bucket_index] += 1
@@ -154,7 +164,14 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                     ema = self.ARRIVAL_EMA_COEFF * delta[i] + (1 - self.ARRIVAL_EMA_COEFF) * ema
                 res[func_id] = ema / (most_recent_bucket_arrival + 1e-6)
         return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s, func_2_arrivalEma=res)
-
+    def GetInvocationDict(self, request, context): # RPC call tested from python runtime
+        respond = routing_pb2.GetInvocationDictResponse()
+        with self.activation_dict_lock:
+            for func, invocation_dict in self.func_2_activationDict.items():
+                respond.func2_invocationRecordList[func].invocationId.extend(invocation_dict.keys())
+                respond.func2_invocationRecordList[func].arrivalTime.extend(invocation_dict.values())
+            self.func_2_activationDict.clear()
+            return respond
 
 def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,
                                      default_svr_type: str, q_update_timer_interval_sec: float,

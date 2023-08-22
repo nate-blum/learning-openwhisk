@@ -85,24 +85,24 @@ class DB:
         headers = {
             'Content-Type': 'application/json',
         }
-        body = {
-            "selector": {
-                "start": {
-                    "$gte": since
-                }
-            },
-            "limit": limit
-            # "fields": ["start", "end", "duration", "name", "annotations"]
-        }
         # body = {
         #     "selector": {
-        #         "$and": [
-        #             {"start": {"$gte": since}},
-        #             {"start": {"$lte": until}}
-        #         ]
+        #         "start": {
+        #             "$gte": since
+        #         }
         #     },
         #     "limit": limit
+        #     # "fields": ["start", "end", "duration", "name", "annotations"]
         # }
+        body = {
+            "selector": {
+                "$and": [
+                    {"start": {"$gte": since}},
+                    {"start": {"$lt": until}}
+                ]
+            },
+            "limit": limit
+        }
 
         respond: requests.Response = requests.post(self.url_find, json=body, headers=headers,
                                                    auth=(self.configs['db_username'], self.configs['db_password']))

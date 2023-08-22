@@ -13,7 +13,7 @@ trace_root = config_local.trace_root_path
 wandb_group_name = "Interference_AzureTop5funcs_ratioReward"
 
 note = "rewardRatio0.5_T100_2ContainerPerCore_" + config.CONFIG_NOTE
-
+SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
 num_envs = 10
 trajectory_len = 100
@@ -45,11 +45,12 @@ select_func_weight = {
 }
 
 workload_config = {
-    'workload_line_start': 10,
+    'workload_line_start': 0,
     'random_start': True,
     #'trace_file': os.path.join(trace_root, 'faas_top5funcs_day2_scaledown_300.txt')
-    'trace_file': os.path.join(trace_root, 'workload_multiple_funcs_43111_range18000000_scale80.csv')
+    #'trace_file': os.path.join(trace_root, 'workload_multiple_funcs_43111_range18000000_scale80.csv')
     # 'trace_file': os.path.join(trace_root, 'workload_range3600000_scale100.csv')
+    'trace_file': './workload/test_workload.csv'
 }
 initialize_env = {
     'whether_initialize_env': True,

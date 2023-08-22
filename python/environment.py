@@ -5,6 +5,8 @@ import config_local
 import rpyc
 import pickle
 from statistics import mean
+from collections import defaultdict
+from pprint import pprint
 
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
@@ -41,10 +43,10 @@ from power import PDU_reader
 from workload_generator import start_workload_process
 from db_client import DB
 
-signal_queue = Queue()  # sending signal to control workload generator's reset/start
+global_signal_queue = Queue()  # sending signal to control workload generator's reset/start
 SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
 SERVER_RPC_THREAD_COUNT = 8  # for routing
-SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 2  # 1 should be grood enough to handle, as only one rpc at a time
+SERVER_RPC_THREAD_COUNT_CLUSTER_UPDATE = 4  # TODO, reconsider the number
 RPC_ROUTING_SERVER_PORT = "50051"  # RPC server port, routing server
 RPC_SERVER_PORT_CLUSTER_UPDATE = "50052"  # RPC server port, cluster state update
 NUM_ACTIVE_FUNC: int = config.input_space_spec['n_func']
@@ -61,6 +63,8 @@ ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9)  # 120second, 2 minute, in nanosecond
 EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond
 ARRIVAL_EMA_BUCKET_NSEC = 2_000_000_000  # 2 second in nanosecond
 ARRIVAL_EMA_COEFF = 0.4
+SELECT_FUNC_ARRIVAL_EMA_WEIGHT = training_configs.select_func_weight['arrival_delta']
+SELECT_FUNC_LATENCY_SLACK_WEIGHT = training_configs.select_func_weight['latency_slack']
 do_state_clip: bool = training_configs.NN['state_clip']
 state_clip_value = 2000
 PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
@@ -68,7 +72,7 @@ PDU_OUTLET_LST = [21, 22]
 PDU_SAMPLE_INTERVAL = 0.4
 WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
 WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
-WSK_PATH = "/local/kuozhang-local/nsf-backup/openwhisk/bin/wsk"
+WSK_PATH = "/usr/local/bin/wsk"
 SSH_USER_NAME = auth.user_name
 SSH_PASSWD = auth.passwd
 INVOKER_PYTHON_PATH = config_local.invoker_py_path
@@ -188,15 +192,27 @@ class Func:
         self.invokerType_2_referenceExecTime: dict[str, int] = invoker_2_referenceExecTime
 
 
+class Stats:
+    def __init__(self):
+        self.func_2_cold_start: defaultdict[str, int] = defaultdict(int)
+
+    def reset(self):
+        self.func_2_cold_start.clear()
+
+
 class Cluster:
+    DEFAULT_SERVER_TYPE = DEFAULT_SERVER_TYPE
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
         self.time_stamp = utility.get_curr_time()
         self.setup_logging()
+        self.stats = Stats()
+        self.last_cluster_staste_update_time = None
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
         self.funcname_2_id = {}
+        self.func_2_sla: Dict[str, int] = {}
 
         self.id_2_invoker: Dict[int, Invoker] = {}
         self.type_2_invoker: Dict[str, Set[Invoker]] = {}
@@ -222,9 +238,10 @@ class Cluster:
             func_id = self.register_func(**spec)
             self.all_func_ids.append(func_id)
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
-        self.state_info = None
         self.cluster_peak_pw = None
         self.db = DB()
+        self.last_query_db_since = round(time.time() * 1000)
+        self.func_2_invocation2Arrival: dict[str, dict[str, int]] = defaultdict(dict)  # arrival time is in nanosecond
 
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
@@ -236,10 +253,11 @@ class Cluster:
                                                    RPC_SERVER_PORT_CLUSTER_UPDATE), daemon=True)  # avoid self usage
         self.load_balancer_process.start()
         logging.info("load balance process started")
-        # --------------------------------Start Worklaod Generation Process-----------------------------------
-        # self.workload_generate_process = Process(target=start_workload_process,
-        #                                          args=(signal_queue, WORKLOAD_START_POINTER, WORKLOAD_TRACE_FILE,
-        #                                                WSK_PATH))
+        # --------------------------------Start Workload Generation Process-----------------------------------
+        self.workload_generate_process = Process(target=start_workload_process,
+                                                 args=(global_signal_queue, WORKLOAD_START_POINTER, WORKLOAD_TRACE_FILE,
+                                                       WSK_PATH), daemon= True)
+        self.workload_generate_process.start()
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
         # state update server might use the stub for sending rpc request)-----------------------------------
         self.routing_channel = grpc.insecure_channel(f'localhost:{RPC_ROUTING_SERVER_PORT}')
@@ -253,7 +271,7 @@ class Cluster:
         reflection.enable_server_reflection(
             (clusterstate_pb2.DESCRIPTOR.services_by_name["ClusterStateService"].full_name,
              reflection.SERVICE_NAME), self.cluster_info_update_server)
-        self.cluster_info_update_server.add_insecure_port(f"[::]:{RPC_SERVER_PORT_CLUSTER_UPDATE}")
+        self.cluster_info_update_server.add_insecure_port(f"0.0.0.0:{RPC_SERVER_PORT_CLUSTER_UPDATE}")
         self.cluster_info_update_server.start()
         logging.info("cluster state service started")
         # ----------------------------PUD thread--------------------------------------------
@@ -289,6 +307,7 @@ class Cluster:
     def _check_healthy_on_each_step(self):
         assert self.pdu.pdu_thread.is_alive(), "PDU thread dead!"
         assert self.load_balancer_process.is_alive(), "Routing process dead!"
+        assert self.workload_generate_process.is_alive(), "Workload generator process dead!"
 
     def _initialization(self):
         # instantiate Invoker instances, the invoker instance will initialize the Core object
@@ -354,7 +373,10 @@ class Cluster:
             invoker.num_warming_container = warming_sum
 
     def reset(self, seed=None, options=None):
-        pass
+        global_signal_queue.put(["start", 0])
+
+
+
 
     def _map_action(self, simple_action: np.ndarray) -> Dict[int, Action]:
         # the output is sample from Normal distribution, they should be mapped as real control operation
@@ -436,10 +458,10 @@ class Cluster:
             self.actionRealizeCounter.add_success += 1
             core_preference_lst = select_invoker.get_core_preference_list()
             select_invoker.rpc_add_container(action_name=func.name, pinned_core=core_preference_lst[0:func.cpu_req])
-            logging.info("Successfully create container for function {}", func.name)
+            logging.info(f"Successfully create container for function {func.name}")
         else:
             self.actionRealizeCounter.add_fail += 1
-            logging.info("Fail to realize action of adding container for function {}", func.name)
+            logging.info(f"Fail to realize action of adding container for function {func.name}")
 
     # realize the action in the openwhisk system
     def take_action(self, mapped_action: Dict[int, Action]):
@@ -455,14 +477,20 @@ class Cluster:
         self.pdu.clear_samples()  # clear sample just before taking action
         self.take_action(mapped_action)
         time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
+        db_activations = self.update_activation_record()  # contain all function, not jut active function
+        reward_dict, func_2_tail_latency, func_2_type2latencyList = compute_reward_using_overall_stat(
+            db_activations=db_activations,
+            func_2_invocation2Arrival=self.func_2_invocation2Arrival,
+            func_2_sla=self.func_2_sla,
+            get_power=self.pdu.get_average_power,
+            cluster_peak_pw=self.cluster_peak_pw,
+            latency_factor=RATIO_BASED_LATENCY_FACTOR)
+        state = self.get_obs(func_2_tail_latency,
+                             func_2_type2latencyList)  # TODO: Make sure it is okay to put this method after reward method
+        return state, reward_dict, False, False, {'reward_dict': reward_dict}
 
-        state = self.get_obs()
-        sla_latency = self.get_sla_latency_for_reward()  # contain all function, not jut active function
-        reward_dict = compute_reward_using_overall_stat(get_power=self.pdu.get_average_power,
-                                                        func_2_latencies=sla_latency,
-                                                        cluster_peak_pw=self.cluster_peak_pw,
-                                                        latency_factor=RATIO_BASED_LATENCY_FACTOR)
-        return state, reward_dict, False, False, self.state_info
+    def get_execution_time(self, db_activations: list[dict]):
+        ...
 
     def step_dummy(self):
         self._check_healthy_on_each_step()
@@ -470,12 +498,44 @@ class Cluster:
         time.sleep(2)
 
     # get the features of All function so that to choose the active working functions.
-    def select_from_all_state(self, ema_dict: ScalarMap[str, float]) -> None:
+    def select_from_all_state(self, ema_dict: ScalarMap[str, float],
+                              func_2_tail_latency: dict[str, float]) -> Optional[list[str]]:
+        # NOTE,The ema_dict might not contain all the registered function, different from simulator, same for `func_2_tail_latency`
+        # This method might change the input parameters
+        for func in self.strId_2_funcs.keys():
+            if func not in ema_dict:
+                ema_dict[func] = 0  # if a function does not appear, just set it to 0, consistent to Simulator
         delta_ema_ndarray = np.array(list(ema_dict.values()))
         delta_ema_mean = delta_ema_ndarray.mean()
         delta_ema_std = delta_ema_ndarray.std()
 
-        self.active_func_ids = [0, 1]  # TODO, update active function id
+        func_2_latencySlack: dict[str, float] = {}
+        for func in self.strId_2_funcs.keys():
+            if func not in func_2_tail_latency:
+                func_2_tail_latency[
+                    func] = 0  # if a function does not appear, set it to 0 which is consistent to Simulator
+        for func, tail_latency in func_2_tail_latency.items():
+            func_2_latencySlack[func] = self.func_2_sla[func] - tail_latency
+
+        if not training_configs.select_func_params['more_than_2_funcs']:
+            return
+        func_2_score = {}
+        latency_slack_ndarray = np.array(list(func_2_latencySlack.values()))
+        latency_slack_mean = latency_slack_ndarray.mean()
+        latency_slack_std = latency_slack_ndarray.std()
+        # delta ema is normalized within each function and then across all function, latency slack only normalized
+        # across functions. This is consistent to Simulator
+        # NOTE always consider the impact caused by different *SCALA* of function arrivals
+        for func in self.strId_2_funcs.keys():
+            ema_term = (ema_dict[func] - delta_ema_mean) / (delta_ema_std + 1e-6)
+            latency_slack_term = (func_2_latencySlack[func] - latency_slack_mean) / (
+                    latency_slack_std + 1e-6)
+            func_2_score[
+                func] = SELECT_FUNC_ARRIVAL_EMA_WEIGHT * ema_term - SELECT_FUNC_LATENCY_SLACK_WEIGHT * latency_slack_term
+
+        sorted_score = sorted(func_2_score.items(), key=lambda x: x[1], reverse=True)  # decreasing order
+        self.active_func_ids = [self.funcname_2_id[sorted_score[0][0]], self.funcname_2_id[sorted_score[-1][0]]]
+        return [sorted_score[0][0], sorted_score[-1][0]]
 
     def _state_get_avg_pinned_container_per_core_per_type(self) -> list[float]:
         # get the average number of pinned container per core per type (NOTE,in simulator, we use "num_free_core" which is not
@@ -498,16 +558,30 @@ class Cluster:
             res_dict[invoker.type][2] += len(set_container)
         return res_dict
 
-    def get_sla_latency_for_reward(self):
-        pass
-
+    # TODO, validate the query latency is acceptable in training
+    def update_activation_record(self) -> list[dict]:
+        resp: routing_pb2.GetInvocationDictResponse = self.routing_stub.GetInvocationDict(routing_pb2.EmptyRequest())
+        logging.info(f"RPC respond from GetInvocationDict:\n{resp}")
+        curr_time = round(time.time() * 1000)  # database time is in millisecond
+        db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs']
+        self.last_query_db_since = curr_time  # guarantee no missing of record in database
+        # update the local invocation dict
+        for func, listRecord in resp.func2_invocationRecordList.items():
+            for invocation, arrTime in zip(listRecord.invocationId, listRecord.arrivalTime):
+                assert invocation not in self.func_2_invocation2Arrival[func]
+                self.func_2_invocation2Arrival[func][invocation] = arrTime  # the time is in nanosecond
+        return db_activations
 
     def compute_utilization(self) -> Dict:
         pass
 
-    def get_obs(self):
-        arrival_info: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest)
-        self.select_from_all_state(arrival_info.func_2_arrivalEma)
+    def get_obs(self, func_2_tail_latency: dict[str, float],
+                func_2_type2latencyList: defaultdict[str, defaultdict[str, list]]):
+        arrival_info: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest())
+        select_func: list[str] = self.select_from_all_state(arrival_info.func_2_arrivalEma,
+                                                            func_2_tail_latency)  # the parameter might be changed
+        # Some (func, type) pair might not be in the default dict
+        func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func)
         nn_state = []
         cluster_state = []  # not tired to a specific function
         core_avg_pinned: list[
@@ -520,13 +594,21 @@ class Cluster:
                               arrival_info.query_count_3s[func_str],
                               func.cpu_req,
                               func.mem_req,
-                              arrival_info.func_2_arrivalEma[func_str]
+                              arrival_info.func_2_arrivalEma[func_str],
+                              self.stats.func_2_cold_start[func_str],
                               ]
             container_per_type_dict = self._state_get_num_container_per_type(func_str)
             for type_ in self.server_types:
+                type_tail_latency = np.percentile(func_2_type2latencyList[func_str][type_], 95) if \
+                    func_2_type2latencyList[func_str][type_] else 0
+                func_state_vec.append(
+                    self.func_2_sla[func_str] - type_tail_latency)  # TODO, rethink, 95 or 99, including buffered or not
                 func_state_vec.append(container_per_type_dict[type_][1])  # warming count
                 func_state_vec.append(
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
+                func_state_vec.append(
+                    func_2_containerUtilization[func_str][type_] if func_str in func_2_containerUtilization and type_ in
+                                                                    func_2_containerUtilization[func_str] else 0)
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
                     func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
@@ -546,6 +628,7 @@ class Cluster:
                                         mem_req=kwargs['mem_req'],
                                         cpu_req=kwargs['cpu_req'], sla=kwargs['sla'],
                                         invoker_2_referenceExecTime=kwargs['invoker_2_referenceExecTime'])
+        self.func_2_sla[name] = kwargs['sla']
         self.intId_2_funcStrName[func_id] = name
         self.funcname_2_id[name] = func_id
         self.func_2_warminfo[name] = {self.id_2_invoker[i]: frozenset() for i in self.id_2_invoker.keys()}
@@ -555,11 +638,11 @@ class Cluster:
         return func_id
 
     # ----------for collecting runtime info---------
-    def get_avg_busy_container_utilization_per_type(self, func_ids: List)->list[float]:
+    def get_avg_busy_container_utilization_per_type(self, func_strs: List[str]) -> defaultdict[str, dict[str, float]]:
         # get avg container utilization per type for each function
-        res = []
-        for func in func_ids:
-            utilization = []
+        res: defaultdict[str, dict[str, float]] = defaultdict(dict)  # {func: {type, utilization}}
+        for func in func_strs:
+            utilization = defaultdict(list)  # {type: [utils]}
             invk_2_busy = self.func_2_busyinfo[func]
             for invk, container_set in invk_2_busy.items():
                 if not container_set:
@@ -567,7 +650,7 @@ class Cluster:
                 container_2_util = invk.rpyc_get_container_stats()
                 for contr in container_set:
                     try:
-                        utilization.append(container_2_util[contr])
+                        utilization[invk.type].append(container_2_util[contr])
                     except KeyError:
                         logging.error(
                             f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
@@ -579,16 +662,16 @@ class Cluster:
                 container_2_util = invk.rpyc_get_container_stats()
                 for contr in container_set:
                     try:
-                        utilization.append(container_2_util[contr])
+                        utilization[invk.type].append(container_2_util[contr])
                     except KeyError:
                         logging.error(
                             f"No container utilization record for warm container {contr} of function {func} on invoker: {invk.id}")
                         assert False
-            if utilization:
-                res.append(mean(utilization))
-            else:
-                res.append(0)
+            for type, util_lst in utilization.items():
+                res[func][type] = mean(
+                    utilization)  # if type is in the dict there must be at least one element in the least
         return res
+
 
 def test_popen_remote():
     host = "panic-cloud-xs-06.cs.rutgers.edu"
@@ -608,11 +691,18 @@ def test_popen_remote():
 
 
 if __name__ == "__main__":
+    import tester
+
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
+    t = tester.Test(cluster)
+    t.test_create_container_issue_requests()
+    # cluster.update_activation_record()
+    # pprint(cluster.func_2_invocation2Arrival)
+
     # cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
-    while True:
-        pprint.pprint(cluster.id_2_invoker[0].rpyc_get_container_stats())
-        time.sleep(1)
-        # cluster.step_dummy()
-        # cluster.print_state()
+    # while True:
+    #     pprint.pprint(cluster.id_2_invoker[0].rpyc_get_container_stats())
+    #     time.sleep(1)
+    # cluster.step_dummy()
+    # cluster.print_state()
