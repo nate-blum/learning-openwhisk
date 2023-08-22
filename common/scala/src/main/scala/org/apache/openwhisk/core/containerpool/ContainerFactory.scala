@@ -57,6 +57,7 @@ case class ContainerPoolConfig(userMemory: ByteSize,
                                batchDeletionSize: Int,
                                healthTestBuffer: Int,
                                alwaysColdStart: Boolean,
+                               enableColdStart: Boolean,
                                prewarmContainerCreationConfig: Option[PrewarmContainerCreationConfig] = None) {
   require(
     concurrentPeekFactor > 0 && concurrentPeekFactor <= 1.0,
