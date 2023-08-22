@@ -1,6 +1,7 @@
 # will run in the training agent process
 import pprint
 import logging
+import time
 from controller_server import clusterstate_pb2_grpc, routing_pb2
 from controller_server.clusterstate_pb2 import UpdateClusterStateRequest, UpdateClusterStateResponse, \
     GetRoutingColdStartRequest, \
@@ -30,11 +31,19 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                 for func_id_str, action_state in info.actionStates.items():
                     # busy, warm,      [...str...]
                     for container_status, container_lst in action_state.stateLists.items():
+                        core_pinned_list_list = []
+                        for container in container_lst.containers:
+                            try:
+                                pin_lst = [invoker.id_2_core[int(i)] for i in container.core_pin.split(",")]
+                            except ValueError:
+                                pin_lst = []
+                                logging.error(f"No pinning information for container {container.id}")
+                            finally:
+                                core_pinned_list_list.append(pin_lst)
                         containers = [
-                            env.Container(container.id,
-                                          [invoker.id_2_core[int(i)] for i in container.core_pin.split(",")],
-                                          invoker) for
-                            container in container_lst.containers]
+                            env.Container(container.id, pin_lst, invoker) for container, pin_lst in
+                            zip(container_lst.containers, core_pinned_list_list)]
+
                         # update core pinning count
                         for c in containers:
                             for core in c.pinned_core:
@@ -67,9 +76,11 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     container_counter.count.append(total)
                     container_counter.invokerId.append(invk_id)
             try:
-                func_2_ContainerCounter.func_2_ContainerCounter[func_id_str] = container_counter
-            except ValueError:
-                logging.info(f"TODO: why this exception happened")
+                # https://stackoverflow.com/questions/52583468/protobuf3-python-how-to-set-element-to-mapstring-othermessage-dict
+                func_2_ContainerCounter.func_2_ContainerCounter[func_id_str].CopyFrom(container_counter) # bugfix here
+            except ValueError as e:
+                logging.info(f"TODO: why this exception happened {e}")
+        self.cluster.last_cluster_staste_update_time = time.time()
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
         # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
         return UpdateClusterStateResponse()

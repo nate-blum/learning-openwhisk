@@ -207,6 +207,7 @@ class Cluster:
         self.time_stamp = utility.get_curr_time()
         self.setup_logging()
         self.stats = Stats()
+        self.last_cluster_staste_update_time = None
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
@@ -457,10 +458,10 @@ class Cluster:
             self.actionRealizeCounter.add_success += 1
             core_preference_lst = select_invoker.get_core_preference_list()
             select_invoker.rpc_add_container(action_name=func.name, pinned_core=core_preference_lst[0:func.cpu_req])
-            logging.info("Successfully create container for function {}", func.name)
+            logging.info(f"Successfully create container for function {func.name}")
         else:
             self.actionRealizeCounter.add_fail += 1
-            logging.info("Fail to realize action of adding container for function {}", func.name)
+            logging.info(f"Fail to realize action of adding container for function {func.name}")
 
     # realize the action in the openwhisk system
     def take_action(self, mapped_action: Dict[int, Action]):
@@ -695,7 +696,7 @@ if __name__ == "__main__":
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
     t = tester.Test(cluster)
-    t.test_generate_workload_routing_state_update_get_obs()
+    t.test_create_container_issue_requests()
     # cluster.update_activation_record()
     # pprint(cluster.func_2_invocation2Arrival)
 

@@ -1,9 +1,12 @@
+import logging
+
 import config
 from controller_server import routing_pb2
 from controller_server.routing_pb2 import GetArrivalInfoResponse, GetInvocationRouteResponse, EmptyRequest
 import time
 from pprint import pprint
 import environment
+import data_structure
 
 
 class Test:
@@ -29,6 +32,28 @@ class Test:
         while 1:
             time.sleep(5)
             self.cluster._check_healthy_on_each_step()
+
+    def test_create_container_issue_requests(self):
+        # <----------test deletion of container ---------->
+        # while True:
+        #     if self.cluster.last_cluster_staste_update_time:
+        #         for function, dict_ in self.cluster.func_2_warminfo.items():
+        #             for invoker, st in dict_.items():
+        #                 for container in st:
+        #                     invoker.rpc_delete_container(container_id=container.id, func_name=function)
+        #                     logging.info(f"Deleted one container {container.id} on invoker {invoker.id}")
+        # <---------------Test start container--------------->
+        #self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
+        while True:
+            time.sleep(10)
+
+
+
+
+
+
+
+
 
 
 

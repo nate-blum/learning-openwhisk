@@ -47,7 +47,7 @@ class WorkloadGenerator:
         #          ^                                          |
         #          |                                         |
         #         --------------------------------------------
-        logging.info("Start Generate Workload")
+        logging.info("Generate Workload Loop Started")
         while True:
             match self.state:
                 case "reset":
