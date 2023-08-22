@@ -111,7 +111,6 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
 
   def receive: Receive = {
     case p: PingMessage =>
-      logging.info(this, s"received ping, ${p.actionStates.toString}")
       val invoker = instanceToRef.getOrElse(p.instance.toInt, registerInvoker(p.instance))
       instanceToRef = instanceToRef.updated(p.instance.toInt, invoker)
 
@@ -141,14 +140,12 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
       instanceToRef.get(msg.invokerInstance.toInt).foreach(_.forward(msg))
 
     case CurrentState(invoker, currentState: InvokerState) =>
-      logging.info(this, "current state event")
       refToInstance.get(invoker).foreach { instance =>
         status = status.updated(instance.toInt, new InvokerHealth(instance, currentState))
       }
       logStatus()
 
     case Transition(invoker, oldState: InvokerState, newState: InvokerState) =>
-      logging.info(this, "transition event")
       refToInstance.get(invoker).foreach { instance =>
         status = status.updated(instance.toInt, new InvokerHealth(instance, newState))
       }
@@ -179,7 +176,6 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
 
   def processInvokerPing(bytes: Array[Byte]): Future[Unit] = Future {
     val raw = new String(bytes, StandardCharsets.UTF_8)
-    logging.info(this, s"The received raw string: $raw")
     PingMessage.parse(raw) match {
       case Success(p: PingMessage) =>
         self ! p
