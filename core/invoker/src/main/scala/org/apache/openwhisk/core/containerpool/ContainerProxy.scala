@@ -1173,8 +1173,7 @@ object ContainerProxy {
       duration = Some(totalInterval.duration.toMillis),
       response = response,
       annotations = {
-        Parameters(WhiskActivation.limitsAnnotation, JsNumber(instance.instance)) ++
-          Parameters("instanceId", JsNumber(instance.instance)) ++
+        Parameters(WhiskActivation.limitsAnnotation, job.action.limits.toJson) ++
           Parameters(WhiskActivation.pathAnnotation, JsString(job.action.fullyQualifiedName(false).asString)) ++
           Parameters(WhiskActivation.kindAnnotation, JsString(job.action.exec.kind)) ++
           Parameters(WhiskActivation.timeoutAnnotation, JsBoolean(isTimeout)) ++
