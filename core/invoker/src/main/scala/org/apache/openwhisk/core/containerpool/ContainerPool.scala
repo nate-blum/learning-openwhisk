@@ -20,6 +20,7 @@ package org.apache.openwhisk.core.containerpool
 import akka.actor.{Actor, ActorRef, ActorRefFactory, Props}
 import org.apache.openwhisk.common.{ContainerListKey, Logging, LoggingMarkers, MetricEmitter, TransactionId}
 import org.apache.openwhisk.core.connector.MessageFeed
+import org.apache.openwhisk.core.containerpool.ContainerPool.{someContainerMatchesAction}
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
@@ -231,15 +232,17 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               takePrewarmContainer(r.action)
                 .map(container => (container, "prewarmed"))
                 .orElse {
+                  if (!poolConfig.enableColdStart ||
+                    (!poolConfig.alwaysColdStart && someContainerMatchesAction(r.action, r.msg.user.namespace.name, busyPool))) None
                   // Is there enough space to create a new container or do other containers have to be removed?
-                  if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, r.action.name.name.contains("invokerHealthTestAction"))) {
+                  else if (poolConfig.enableColdStart && hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, r.action.name.name.contains("invokerHealthTestAction"))) {
                     val container = Some(createContainer(memory), "cold")
                     incrementColdStartCount(kind, memory)
                     container
                   } else None
                 })
             .orElse {
-              if (allowOpenWhiskToFreeMemory) {
+              if (allowOpenWhiskToFreeMemory && poolConfig.enableColdStart) {
                 // Remove a container and create a new one for the given job
                 logging.info(this, "deleting container to free memory")
                 ContainerPool
@@ -659,6 +662,17 @@ object ContainerPool {
           case _                                                                                  => false
         }
       }
+  }
+
+  protected[containerpool] def someContainerMatchesAction[A](action: ExecutableWhiskAction,
+                                                      invocationNamespace: EntityName,
+                                                      pool: Map[A, ContainerData]): Boolean = {
+    pool.exists {
+      case (_, _ @ WarmedData(_, `invocationNamespace`, `action`, _, _, _, _)) => true
+      case (_, _ @ WarmingData(_, `invocationNamespace`, `action`, _, _)) => true
+      case (_, _ @ WarmingColdData(`invocationNamespace`, `action`, _, _)) => true
+      case _ => false
+    }
   }
 
   /**

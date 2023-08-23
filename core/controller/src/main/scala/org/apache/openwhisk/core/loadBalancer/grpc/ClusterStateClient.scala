@@ -8,7 +8,7 @@ import org.apache.openwhisk.grpc._
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContextExecutor
-import scala.util.{Failure, Success}
+import scala.util.{Failure}
 
 class ClusterStateClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSystem: ActorSystem, logging: Logging) {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
@@ -16,13 +16,11 @@ class ClusterStateClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit acto
   val client: ClusterStateService = ClusterStateServiceClient(clientSettings)
 
   def executeClusterStateUpdate(state: mutable.Map[Int, ActionStatePerInvoker]): Unit = {
-    logging.info(this, "executing clusterstate request from clusterStateUpdate client")
     val reply = client.updateClusterState(UpdateClusterStateRequest(Some(InvokerClusterState(state.toMap))))
     reply.onComplete {
-      case Success(value) =>
-        logging.info(this, s"updating cluster state request has succeed")
       case Failure(e) =>
         logging.info(this, s"updating cluster state request has failed ${e.getMessage}")
+      case _ =>
     }
   }
 

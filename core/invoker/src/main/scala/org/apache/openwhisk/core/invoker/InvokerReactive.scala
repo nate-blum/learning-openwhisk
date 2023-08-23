@@ -141,6 +141,7 @@ class InvokerReactive(
   /** Stores an activation in the database. */
   private val store = (tid: TransactionId, activation: WhiskActivation, isBlocking: Boolean, context: UserContext) => {
     implicit val transid: TransactionId = tid
+    logging.info(this, "storing activation invokerreactive")
     activationStore.storeAfterCheck(activation, isBlocking, None, None, context)(tid, notifier = None, logging)
   }
 

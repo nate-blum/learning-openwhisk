@@ -361,7 +361,7 @@ class ContainerProxy(factory: (TransactionId,
             // also update the feed and active ack; the container cleanup is queued
             // implicitly via a FailureMessage which will be processed later when the state
             // transitions to Running
-            val activation = ContainerProxy.constructWhiskActivation(job, None, Interval.zero, false, response)
+            val activation = ContainerProxy.constructWhiskActivation(job, None, Interval.zero, false, response, instance)
             sendActiveAck(
               transid,
               activation,
@@ -780,7 +780,8 @@ class ContainerProxy(factory: (TransactionId,
         None,
         Interval.zero,
         false,
-        abortResponse.getOrElse(ActivationResponse.whiskError(Messages.abnormalRun)))
+        abortResponse.getOrElse(ActivationResponse.whiskError(Messages.abnormalRun)),
+        instance)
       val context = UserContext(job.msg.user)
       val msg = if (job.msg.blocking) {
         CombinedCompletionAndResultMessage(tid, result, instance)
@@ -944,7 +945,7 @@ class ContainerProxy(factory: (TransactionId,
                 initInterval,
                 initRunInterval,
                 runInterval.duration >= actionTimeout,
-                response)
+                response, instance)
           }
       }
       .recoverWith {
@@ -953,7 +954,7 @@ class ContainerProxy(factory: (TransactionId,
         case InitializationError(interval, response) =>
           Future.successful(
             ContainerProxy
-              .constructWhiskActivation(job, Some(interval), interval, interval.duration >= actionTimeout, response))
+              .constructWhiskActivation(job, Some(interval), interval, interval.duration >= actionTimeout, response, instance))
         case t =>
           // Actually, this should never happen - but we want to make sure to not miss a problem
           logging.error(this, s"caught unexpected error while running activation: ${t}")
@@ -963,7 +964,8 @@ class ContainerProxy(factory: (TransactionId,
               None,
               Interval.zero,
               false,
-              ActivationResponse.whiskError(Messages.abnormalRun)))
+              ActivationResponse.whiskError(Messages.abnormalRun),
+              instance))
       }
 
     val splitAckMessagesPendingLogCollection = collectLogs.logsToBeCollected(job.action)
@@ -1141,7 +1143,8 @@ object ContainerProxy {
                                initInterval: Option[Interval],
                                totalInterval: Interval,
                                isTimeout: Boolean,
-                               response: ActivationResponse) = {
+                               response: ActivationResponse,
+                               instance: InvokerInstanceId) = {
     val causedBy = if (job.msg.causedBySequence) {
       Some(Parameters(WhiskActivation.causedByAnnotation, JsString(Exec.SEQUENCE)))
     } else None
@@ -1158,7 +1161,7 @@ object ContainerProxy {
     val binding =
       job.msg.action.binding.map(f => Parameters(WhiskActivation.bindingAnnotation, JsString(f.asString)))
 
-    WhiskActivation(
+    val activation = WhiskActivation(
       activationId = job.msg.activationId,
       namespace = job.msg.user.namespace.name.toPath,
       subject = job.msg.user.subject,
@@ -1175,7 +1178,10 @@ object ContainerProxy {
           Parameters(WhiskActivation.kindAnnotation, JsString(job.action.exec.kind)) ++
           Parameters(WhiskActivation.timeoutAnnotation, JsBoolean(isTimeout)) ++
           causedBy ++ initTime ++ waitTime ++ binding
-      })
+      },
+      instanceId = Some(instance.instance))
+    println(activation)
+    activation
   }
 
   /**
