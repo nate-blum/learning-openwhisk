@@ -77,12 +77,13 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     container_counter.invokerId.append(invk_id)
             try:
                 # https://stackoverflow.com/questions/52583468/protobuf3-python-how-to-set-element-to-mapstring-othermessage-dict
-                func_2_ContainerCounter.func_2_ContainerCounter[func_id_str].CopyFrom(container_counter) # bugfix here
+                func_2_ContainerCounter.func_2_ContainerCounter[func_id_str].CopyFrom(container_counter) # bugfix here, any other similar
             except ValueError as e:
-                logging.info(f"TODO: why this exception happened {e}")
+                logging.error(f"Exception {e}")
         self.cluster.last_cluster_staste_update_time = time.time()
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
         # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
+        self.cluster.first_update_arrival_event.set() # mark there is at least one update
         return UpdateClusterStateResponse()
 
     # NOTE, cold start is realized by routing to a specific invoker, which might not lead to a Real cold-start

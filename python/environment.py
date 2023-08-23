@@ -1,6 +1,8 @@
 import sys
 import os
 import pprint
+import threading
+
 import config_local
 import rpyc
 import pickle
@@ -207,7 +209,6 @@ class Cluster:
         self.time_stamp = utility.get_curr_time()
         self.setup_logging()
         self.stats = Stats()
-        self.last_cluster_staste_update_time = None
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
@@ -242,6 +243,7 @@ class Cluster:
         self.db = DB()
         self.last_query_db_since = round(time.time() * 1000)
         self.func_2_invocation2Arrival: dict[str, dict[str, int]] = defaultdict(dict)  # arrival time is in nanosecond
+        self.first_update_arrival_event = threading.Event()
 
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
@@ -278,6 +280,8 @@ class Cluster:
         self.pdu = PDU_reader(PDU_HOST, PDU_OUTLET_LST, PDU_SAMPLE_INTERVAL)
         self.pdu.start_thread()
         logging.info("pdu thread started")
+        logging.info("waiting the first cluster state update")
+        self.first_update_arrival_event.wait()
 
     def print_state(self):
         print("-----------------------------State Begin-----------------------------------------")
@@ -355,8 +359,6 @@ class Cluster:
 
     def _update_invoker_state(self):
         # update the invoker state after controller rpc update
-        logging.info(f"invokers {self.id_2_invoker.values()}")
-        logging.info(f"func_2_busy: {self.func_2_busyinfo}")
         for invoker in self.id_2_invoker.values():
             warm_sum: int = 0
             busy_sum: int = 0
@@ -371,6 +373,8 @@ class Cluster:
             invoker.num_busy_container = busy_sum
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
+        logging.info(f"invokers state: {self.id_2_invoker.values()}")
+        logging.info(f"func_2_busy: {self.func_2_busyinfo}")
 
     def reset(self, seed=None, options=None):
         global_signal_queue.put(["start", 0])
@@ -565,11 +569,13 @@ class Cluster:
         curr_time = round(time.time() * 1000)  # database time is in millisecond
         db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs']
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
-        # update the local invocation dict
+        # update the local invocation dict based on rpc result
         for func, listRecord in resp.func2_invocationRecordList.items():
             for invocation, arrTime in zip(listRecord.invocationId, listRecord.arrivalTime):
                 assert invocation not in self.func_2_invocation2Arrival[func]
                 self.func_2_invocation2Arrival[func][invocation] = arrTime  # the time is in nanosecond
+        logging.info(f"Function_2_invocation2arrival:\n{self.func_2_invocation2Arrival}")
+        logging.info(f"DB_activations:\n{db_activations}")
         return db_activations
 
     def compute_utilization(self) -> Dict:

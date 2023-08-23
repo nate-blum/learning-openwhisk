@@ -44,8 +44,11 @@ class Test:
         #                     logging.info(f"Deleted one container {container.id} on invoker {invoker.id}")
         # <---------------Test start container--------------->
         #self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
-        while True:
-            time.sleep(10)
+        self.cluster.reset()
+        time.sleep(10)
+        self.cluster.update_activation_record()
+        exit()
+
 
 
 

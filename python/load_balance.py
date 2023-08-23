@@ -93,7 +93,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         func_id_str: str = request.actionName
         activation_id: str = request.activationId
         assert "invokerHealthTestAction" != func_id_str[:23]
-        logging.info(f"Received routing request from OW controller, {func_id_str}")
+        logging.info(f"Received routing request from OW controller, {func_id_str}, activationId: {activation_id}")
         #assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:
             t = time_ns()
