@@ -347,6 +347,7 @@ class InvokerReactive(
 
   private def pingController(isEnabled: Boolean) = {
     implicit val timeout: Timeout = 10.seconds
+    pool ! PrintRunBuffer()
     val actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long) = Await.result(pool ? GetActionStates(), timeout.duration)
       .asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)]
     val p = PingMessage(instance, actionStates, isEnabled = Some(isEnabled))

@@ -192,9 +192,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case GetActionStates() =>
       sender() ! this.actionStates()
 
+    case PrintRunBuffer() =>
+      logging.info(this, s"printing run buffer")
+      runBuffer.foreach(r => logging.info(this, s"${r.action.name.name}"))
+
     case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")
-      //TODO: reset run buffer?
       runBuffer = immutable.Queue.empty
       List(freePool, busyPool, prewarmedPool, prewarmStartingPool, warmingPool)
         .flatMap(_.keys) foreach removeContainer
@@ -866,3 +869,4 @@ case class PrewarmingConfig(initialCount: Int,
                             reactive: Option[ReactivePrewarmingConfig] = None)
 
 case class GetActionStates()
+case class PrintRunBuffer()
