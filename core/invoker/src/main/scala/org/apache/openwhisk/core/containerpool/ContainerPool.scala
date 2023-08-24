@@ -225,6 +225,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         val memory = r.action.limits.memory.megabytes.MB
 
         def coldStartContainer(isHealthTest: Boolean): Option[((ActorRef, ContainerData), String)] = {
+          logging.info(this, "cold starting container")
           if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, isHealthTest)) {
             val container = Some(createContainer(memory), "cold")
             incrementColdStartCount(kind, memory)
@@ -237,7 +238,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           ContainerPool
             .schedule(r.action, r.msg.user.namespace.name, freePool)
             .map(container => (container, container._2.initingState)) //warmed, warming, and warmingCold always know their state
-            .orElse(
+            .orElse {
+              logging.info(this, "first orElse")
               // There was no warm/warming/warmingCold container. Try to take a prewarm container or a cold container.
               // When take prewarm container, has no need to judge whether user memory is enough
               takePrewarmContainer(r.action)
@@ -253,8 +255,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
                     logging.info(this, "cold start logic")
                     coldStartContainer(false)
                   } else None
-                })
+                }
+            }
             .orElse {
+              logging.info(this, "second orElse")
               if (allowOpenWhiskToFreeMemory && poolConfig.enableColdStart) {
                 // Remove a container and create a new one for the given job
                 logging.info(this, "deleting container to free memory")
@@ -661,6 +665,7 @@ object ContainerPool {
   protected[containerpool] def schedule[A](action: ExecutableWhiskAction,
                                            invocationNamespace: EntityName,
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
+    println("ContainerPool: schedule")
     idles
       .find {
         case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _, _)) if c.hasCapacity() => true

@@ -343,7 +343,7 @@ class InvokerReactive(
   private val healthProducer = msgProvider.getProducer(config)
 
   private def getHealthScheduler: ActorRef =
-    Scheduler.scheduleWaitAtMost(1.seconds)(() => pingController(isEnabled = true))
+    Scheduler.scheduleWaitAtMost(poolConfig.clusterStatePingInterval)(() => pingController(isEnabled = true))
 
   private def pingController(isEnabled: Boolean) = {
     implicit val timeout: Timeout = 10.seconds

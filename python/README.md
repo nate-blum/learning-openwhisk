@@ -6,6 +6,7 @@ Important Configuration Variables:
     `health-test-buffer` - the buffer (in MB) to maintain in free memory to ensure that health test actions can be run
     `always-cold-start` - true -> always cold start even if busy container exists for action, false -> wait for busy containers, else cold start if there are none (does not apply if enable-cold-start is false)
     `enable-cold-start` - true -> allow openwhisk to cold start containers on its own, false -> disable this functionality
+    `cluster-state-ping-interval` - interval between cluster state update pings
 - Controller:
 1. `ansible/group_vars/all` AND `ansible/environments/local/group_vars/all` (make sure to set the same values in both)
     `managedFraction` - the fraction of invokers which will be "managed" (used for actions with known runtimes)
