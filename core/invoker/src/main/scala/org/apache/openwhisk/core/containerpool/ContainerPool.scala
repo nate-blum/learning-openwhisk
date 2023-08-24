@@ -243,12 +243,16 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               takePrewarmContainer(r.action)
                 .map(container => (container, "prewarmed"))
                 .orElse {
-                  if (r.action.name.name.contains("invokerHealthTestAction")) coldStartContainer(true)
+                  if (r.action.name.name.contains("invokerHealthTestAction")) {
+                    logging.info(this, "health test cold start")
+                    coldStartContainer(true)
+                  }
                   else if (poolConfig.enableColdStart &&
                     (poolConfig.alwaysColdStart ||
-                      (!poolConfig.alwaysColdStart && !someContainerMatchesAction(r.action, r.msg.user.namespace.name, busyPool))))
+                      (!poolConfig.alwaysColdStart && !someContainerMatchesAction(r.action, r.msg.user.namespace.name, busyPool)))) {
+                    logging.info(this, "cold start logic")
                     coldStartContainer(false)
-                  else None
+                  } else None
                 })
             .orElse {
               if (allowOpenWhiskToFreeMemory && poolConfig.enableColdStart) {
@@ -556,6 +560,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     toDelete ! Remove
     freePool = freePool - toDelete
     busyPool = busyPool - toDelete
+    processBufferOrFeed()
   }
 
   /**
