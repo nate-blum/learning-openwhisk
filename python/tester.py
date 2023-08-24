@@ -1,5 +1,7 @@
 import logging
 
+import numpy as np
+
 import config
 from controller_server import routing_pb2
 from controller_server.routing_pb2 import GetArrivalInfoResponse, GetInvocationRouteResponse, EmptyRequest
@@ -35,17 +37,25 @@ class Test:
 
     def test_create_container_issue_requests(self):
         # <----------test deletion of container ---------->
-        # while True:
-        #     if self.cluster.last_cluster_staste_update_time:
-        #         for function, dict_ in self.cluster.func_2_warminfo.items():
-        #             for invoker, st in dict_.items():
-        #                 for container in st:
-        #                     invoker.rpc_delete_container(container_id=container.id, func_name=function)
-        #                     logging.info(f"Deleted one container {container.id} on invoker {invoker.id}")
+        # for function, dict_ in self.cluster.func_2_warminfo.items():
+        #     for invoker, st in dict_.items():
+        #         for container in st:
+        #             invoker.rpc_delete_container(container_id=container.id, func_name=function)
+        #             logging.info(f"Deleted one container {container.id} on invoker {invoker.id}")
+        # <---------Test reset---------------------------->
+        # for invoker in self.cluster.id_2_invoker.values():
+        #     invoker.rpc_reset_invoker()
         # <---------------Test start container--------------->
         #self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
-        while True:
-            time.sleep(10)
+        #self.cluster.take_action({1: data_structure.Action(container_delta=1,type='xs')})
+        #while True:
+        #    time.sleep(10)
+        # self.cluster.update_activation_record()
+        # self.cluster.reset()
+        # time.sleep(10) # after the invocation is done
+        # self.cluster.step(np.array([0, -1, 0, -1]))
+        self.cluster.get_avg_busy_container_utilization_per_type(['func1', 'func2'])
+
 
 
 

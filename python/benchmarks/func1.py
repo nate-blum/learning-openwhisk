@@ -1,6 +1,6 @@
 import time
 
-def main():
+def main(args):
     i = 0
     start_t = time.time()
     while True:

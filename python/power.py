@@ -23,7 +23,7 @@ class PDU_reader:
         with self.power_sample_lock:
             self.power_sample.clear()
 
-    def get_average_power(self):
+    def get_average_power(self)->float:
         with self.power_sample_lock:
             return mean(self.power_sample)
 

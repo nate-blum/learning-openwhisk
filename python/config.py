@@ -23,7 +23,8 @@ default_svr_type = 'xs'
 # separate in case a function can have multiple SLA
 workload_characteristics = {
     'sla': {
-        'func1': 1000
+        'func1': 500,
+        'func2': 1500
     }
 }
 
@@ -57,8 +58,12 @@ workload_characteristics = {
 func_spec_dict = {
     "func1": {'name': "func1", 'namesp': "guest", 'mem_req': 256, 'cpu_req': 1,
                     'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
+                    'invoker_2_referenceExecTime': {'xs': 100, 'xe': 200},
+                    'sla': 500},
+    "func2": {'name': "func2", 'namesp': "guest", 'mem_req': 256, 'cpu_req': 2,
+                    'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
                     'invoker_2_referenceExecTime': {'xs': 800, 'xe': 500},
-                    'sla': 1000},
+                    'sla': 1500},
 
 }
 

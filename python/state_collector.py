@@ -15,10 +15,11 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
     def __init__(self, cluster: env.Cluster):
         self.cluster: env.Cluster = cluster
         self.stats_update_lock = Lock()
+        self.warming_dummy_id = 0
 
     def UpdateClusterState(self, request: UpdateClusterStateRequest, context):
         # container set get entirely updated on each call (override)
-        # NOTE, must make sure every related data structure is updated properly
+        # NOTE, must make sure every related data structure is updated properly, must make sure every [func][invoker] pair is updated ???!!!
         # ({funcStr:ActionState}, freeMem(MB))
         logging.info(f"Received state update RPC from OW controller, request: {request}")
         with self.cluster.cluster_state_lock:
@@ -41,9 +42,9 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                             finally:
                                 core_pinned_list_list.append(pin_lst)
                         containers = [
-                            env.Container(container.id, pin_lst, invoker) for container, pin_lst in
+                            env.Container(container.id, pin_lst_, invoker) for container, pin_lst_ in
+                            # NOTE, id might be empty str, but its okay as agent won't delete a warming container
                             zip(container_lst.containers, core_pinned_list_list)]
-
                         # update core pinning count
                         for c in containers:
                             for core in c.pinned_core:
@@ -60,7 +61,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                             case _:
                                 assert False
             self.cluster._update_invoker_state()
-        # prepare to update the routing server
+        # prepare to update the routing server, NOTE, actually you need a lock if update freq is high
         function_set = set().union(self.cluster.func_2_busyinfo.keys(), self.cluster.func_2_warminfo.keys(),
                                    self.cluster.func_2_warminfo.keys())
 
@@ -77,12 +78,14 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     container_counter.invokerId.append(invk_id)
             try:
                 # https://stackoverflow.com/questions/52583468/protobuf3-python-how-to-set-element-to-mapstring-othermessage-dict
-                func_2_ContainerCounter.func_2_ContainerCounter[func_id_str].CopyFrom(container_counter) # bugfix here
+                func_2_ContainerCounter.func_2_ContainerCounter[func_id_str].CopyFrom(
+                    container_counter)  # bugfix here, any other similar
             except ValueError as e:
-                logging.info(f"TODO: why this exception happened {e}")
+                logging.error(f"Exception {e}")
         self.cluster.last_cluster_staste_update_time = time.time()
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
         # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
+        self.cluster.first_update_arrival_event.set()  # mark there is at least one update
         return UpdateClusterStateResponse()
 
     # NOTE, cold start is realized by routing to a specific invoker, which might not lead to a Real cold-start

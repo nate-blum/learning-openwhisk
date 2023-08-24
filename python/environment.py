@@ -1,6 +1,8 @@
 import sys
 import os
 import pprint
+import threading
+
 import config_local
 import rpyc
 import pickle
@@ -25,7 +27,7 @@ from collections import deque
 from itertools import chain
 from bisect import bisect
 from invoker_client import invoker_pb2 as invoker_types
-from invoker_client.invoker_pb2 import DeleteContainerWithIdRequest, SuccessResponse
+from invoker_client.invoker_pb2 import DeleteContainerWithIdRequest, SuccessResponse, ResetInvokerRequest
 from invoker_client import invoker_pb2_grpc as invoker_service
 from controller_server import clusterstate_pb2, clusterstate_pb2_grpc, routing_pb2_grpc, routing_pb2
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
@@ -142,6 +144,11 @@ class Invoker:
         response: SuccessResponse = self.stub.DeleteContainerWithId(
             DeleteContainerWithIdRequest(containerId=container_id))
 
+    def rpc_reset_invoker(self):
+        res = self.stub.ResetInvoker(ResetInvokerRequest())
+        logging.info(f"Resetting the invoker: {self.id}")
+        return res
+
     def is_all_core_pinned_to_uplimit(self):
         res = True
         for core in self.id_2_core.values():
@@ -207,7 +214,6 @@ class Cluster:
         self.time_stamp = utility.get_curr_time()
         self.setup_logging()
         self.stats = Stats()
-        self.last_cluster_staste_update_time = None
         self.func_id_counter = 0
         self.strId_2_funcs: Dict[str, Func] = {}  # funcid_str: func_name/action
         self.intId_2_funcStrName: Dict[int, str] = {}
@@ -238,10 +244,11 @@ class Cluster:
             func_id = self.register_func(**spec)
             self.all_func_ids.append(func_id)
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
-        self.cluster_peak_pw = None
+        self.cluster_peak_pw = self._get_cluster_peak()
         self.db = DB()
         self.last_query_db_since = round(time.time() * 1000)
         self.func_2_invocation2Arrival: dict[str, dict[str, int]] = defaultdict(dict)  # arrival time is in nanosecond
+        self.first_update_arrival_event = threading.Event()
 
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
@@ -256,7 +263,7 @@ class Cluster:
         # --------------------------------Start Workload Generation Process-----------------------------------
         self.workload_generate_process = Process(target=start_workload_process,
                                                  args=(global_signal_queue, WORKLOAD_START_POINTER, WORKLOAD_TRACE_FILE,
-                                                       WSK_PATH), daemon= True)
+                                                       WSK_PATH), daemon=True)
         self.workload_generate_process.start()
         # ---------------- Set up rpc client for query arrival info(should before cluster update rpc server, b/c the cluster
         # state update server might use the stub for sending rpc request)-----------------------------------
@@ -278,6 +285,8 @@ class Cluster:
         self.pdu = PDU_reader(PDU_HOST, PDU_OUTLET_LST, PDU_SAMPLE_INTERVAL)
         self.pdu.start_thread()
         logging.info("pdu thread started")
+        logging.info("waiting the first cluster state update")
+        self.first_update_arrival_event.wait()
 
     def print_state(self):
         print("-----------------------------State Begin-----------------------------------------")
@@ -354,9 +363,7 @@ class Cluster:
             invk.py_runtime_client = rpyc.connect(invk.hostname, INVOKER_PY_RPC_PORT)
 
     def _update_invoker_state(self):
-        # update the invoker state after controller rpc update
-        logging.info(f"invokers {self.id_2_invoker.values()}")
-        logging.info(f"func_2_busy: {self.func_2_busyinfo}")
+        # update the invoker state after controller rpc update, this method is called with in a lock
         for invoker in self.id_2_invoker.values():
             warm_sum: int = 0
             busy_sum: int = 0
@@ -371,12 +378,11 @@ class Cluster:
             invoker.num_busy_container = busy_sum
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
+        logging.info(f"invokers state: {self.id_2_invoker.values()}")
+        logging.info(f"func_2_busy: {self.func_2_busyinfo}")
 
     def reset(self, seed=None, options=None):
         global_signal_queue.put(["start", 0])
-
-
-
 
     def _map_action(self, simple_action: np.ndarray) -> Dict[int, Action]:
         # the output is sample from Normal distribution, they should be mapped as real control operation
@@ -410,33 +416,35 @@ class Cluster:
         return candidate_lst[index_min]
 
     def delete_container_multiple_pinning(self, func_id_str: str, type: str) -> Optional[str]:
-        lst_warmset: List[frozenset[Container]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
+        # NOTE, won't delete a warming because warming container does not have an real id
+        with self.cluster_state_lock: # use lock, give me a peace of mind
+            lst_warmset: List[frozenset[Container]] = [st for invk, st in self.func_2_warminfo[func_id_str].items() if
                                                    invk.type == type]
-        lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
-        # lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
-        lst_warm: List[Container] = [container for s in lst_warmset for container in s]  # flatten the list
-        lst_busyset = [container for s in lst_busyset for container in s]
-        # lst_warmingset = [container for s in lst_warmingset for container in s]
-        candidate_lst: List[Container] = list(
-            chain.from_iterable([lst_warm,
-                                 # lst_warmingset,  # warming container does not have an id
-                                 lst_busyset]))  # flatten list of list
-        if candidate_lst:
-            self.actionRealizeCounter.delete_success += 1
-            # find the container that has the maximum number of sibling containers that pinns to its first core.
-            candidate_lst.sort(key=lambda x: x.pinned_core[0].num_pinned_container,
-                               reverse=True)  # stable sort
-            for cand in candidate_lst:
-                invoker_id = cand.invoker.id
-                if cand.id not in self.most_recent_killed_container_cache[invoker_id]:
-                    # NOTE, (1) there is a small chance that the container id is reuse (2) here we must use container
-                    # str id instead of container object since the different object might represent the same physical
-                    # container in this implementation
-                    self.most_recent_killed_container_cache[invoker_id].append(cand.id)
-                    host_invoker: Invoker = cand.invoker
-                    host_invoker.rpc_delete_container(cand.id, self.strId_2_funcs[func_id_str].name)
-                    logging.info("Deleting container {} on invoker {}".format(cand.id, host_invoker.id))
-                    return cand.id  # make sure only delete one
+            lst_busyset = [st for invk, st in self.func_2_busyinfo[func_id_str].items() if invk.type == type]
+            # lst_warmingset = [st for invk, st in self.func_2_warminginfo[func_id_str].items() if invk.type == type]
+            lst_warm: List[Container] = [container for s in lst_warmset for container in s]  # flatten the list
+            lst_busyset = [container for s in lst_busyset for container in s]
+            # lst_warmingset = [container for s in lst_warmingset for container in s]
+            candidate_lst: List[Container] = list(
+                chain.from_iterable([lst_warm,
+                                     # lst_warmingset,  # warming container does not have an id
+                                     lst_busyset]))  # flatten list of list
+            if candidate_lst:
+                self.actionRealizeCounter.delete_success += 1
+                # find the container that has the maximum number of sibling containers that pinns to its first core.
+                candidate_lst.sort(key=lambda x: x.pinned_core[0].num_pinned_container,
+                                   reverse=True)  # stable sort
+                for cand in candidate_lst:
+                    invoker_id = cand.invoker.id
+                    if cand.id not in self.most_recent_killed_container_cache[invoker_id]:
+                        # NOTE, (1) there is a small chance that the container id is reuse (2) here we must use container
+                        # str id instead of container object since the different object might represent the same physical
+                        # container in this implementation
+                        self.most_recent_killed_container_cache[invoker_id].append(cand.id)
+                        host_invoker: Invoker = cand.invoker
+                        host_invoker.rpc_delete_container(cand.id, self.strId_2_funcs[func_id_str].name)
+                        logging.info("Deleting container {} on invoker {}".format(cand.id, host_invoker.id))
+                        return cand.id  # make sure only delete one
         return None  #
 
     def add_container_with_multiple_pinning(self, action: Action, func: Func):
@@ -487,6 +495,8 @@ class Cluster:
             latency_factor=RATIO_BASED_LATENCY_FACTOR)
         state = self.get_obs(func_2_tail_latency,
                              func_2_type2latencyList)  # TODO: Make sure it is okay to put this method after reward method
+        logging.info(
+            f'[---------------------]\nReward:\n{reward_dict}\nfunc_2_tail_latency:\n{func_2_tail_latency}\nfun_2_type2LatencyList:\n{func_2_type2latencyList}')
         return state, reward_dict, False, False, {'reward_dict': reward_dict}
 
     def get_execution_time(self, db_activations: list[dict]):
@@ -550,12 +560,13 @@ class Cluster:
 
     def _state_get_num_container_per_type(self, func_str: str) -> dict[str, tuple[int, int, int]]:
         res_dict = {type_: (0, 0, 0) for type_ in self.server_types}  # (warm, warming, busy)
-        for invoker, set_container in self.func_2_warminfo[func_str].items():
-            res_dict[invoker.type][0] += len(set_container)
-        for invoker, set_container in self.func_2_warminginfo[func_str].items():  # okay is warming has no id
-            res_dict[invoker.type][1] += len(set_container)
-        for invoker, set_container in self.func_2_busyinfo[func_str].items():
-            res_dict[invoker.type][2] += len(set_container)
+        with self.cluster_state_lock:
+            for invoker, set_container in self.func_2_warminfo[func_str].items():
+                res_dict[invoker.type][0] += len(set_container)
+            for invoker, set_container in self.func_2_warminginfo[func_str].items():  # okay is warming has no id
+                res_dict[invoker.type][1] += len(set_container)
+            for invoker, set_container in self.func_2_busyinfo[func_str].items():
+                res_dict[invoker.type][2] += len(set_container)
         return res_dict
 
     # TODO, validate the query latency is acceptable in training
@@ -565,11 +576,13 @@ class Cluster:
         curr_time = round(time.time() * 1000)  # database time is in millisecond
         db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs']
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
-        # update the local invocation dict
+        # update the local invocation dict based on rpc result
         for func, listRecord in resp.func2_invocationRecordList.items():
             for invocation, arrTime in zip(listRecord.invocationId, listRecord.arrivalTime):
                 assert invocation not in self.func_2_invocation2Arrival[func]
                 self.func_2_invocation2Arrival[func][invocation] = arrTime  # the time is in nanosecond
+        logging.info(f"Function_2_invocation2arrival:\n{self.func_2_invocation2Arrival}")
+        logging.info(f"DB_activations:\n{db_activations}")
         return db_activations
 
     def compute_utilization(self) -> Dict:
@@ -639,38 +652,48 @@ class Cluster:
 
     # ----------for collecting runtime info---------
     def get_avg_busy_container_utilization_per_type(self, func_strs: List[str]) -> defaultdict[str, dict[str, float]]:
+        # NOTE, no warming container involved
         # get avg container utilization per type for each function
         res: defaultdict[str, dict[str, float]] = defaultdict(dict)  # {func: {type, utilization}}
         for func in func_strs:
             utilization = defaultdict(list)  # {type: [utils]}
-            invk_2_busy = self.func_2_busyinfo[func]
-            for invk, container_set in invk_2_busy.items():
-                if not container_set:
-                    continue
-                container_2_util = invk.rpyc_get_container_stats()
-                for contr in container_set:
-                    try:
-                        utilization[invk.type].append(container_2_util[contr])
-                    except KeyError:
-                        logging.error(
-                            f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
-                        assert False
-            invk_2_warm = self.func_2_warminfo[func]
-            for invk, container_set in invk_2_warm.items():
-                if not container_set:
-                    continue
-                container_2_util = invk.rpyc_get_container_stats()
-                for contr in container_set:
-                    try:
-                        utilization[invk.type].append(container_2_util[contr])
-                    except KeyError:
-                        logging.error(
-                            f"No container utilization record for warm container {contr} of function {func} on invoker: {invk.id}")
-                        assert False
+            with self.cluster_state_lock:
+                invk_2_busy = self.func_2_busyinfo[func]
+                for invk, container_set in invk_2_busy.items():
+                    if not container_set:
+                        continue
+                    container_2_util = invk.rpyc_get_container_stats() #TODO could merge the two call
+                    for contr in container_set:
+                        try:
+                            utilization[invk.type].append(container_2_util[contr.id])
+                        except KeyError:
+                            logging.error(
+                                f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
+                            assert False
+                invk_2_warm = self.func_2_warminfo[func]
+                for invk, container_set in invk_2_warm.items():
+                    if not container_set:
+                        continue
+                    container_2_util = invk.rpyc_get_container_stats()
+                    logging.info(f"The docker utilization dict for func {func} on invoker id {invk.id}:\n{container_2_util}")
+                    for contr in container_set:
+                        try:
+                            utilization[invk.type].append(container_2_util[contr.id])
+                        except KeyError:
+                            logging.error(
+                                f"No container utilization record for warm container ({contr}) of function {func} on invoker: {invk.id}")
+                            assert False
             for type, util_lst in utilization.items():
-                res[func][type] = mean(
-                    utilization)  # if type is in the dict there must be at least one element in the least
+                res[func][type] = mean(util_lst)  # if type is in the dict there must be at least one element in the least
         return res
+
+    def _get_cluster_peak(self):
+        total = 0
+        for type_, svr_lst in self.cluster_spec_dict.items():
+            for svr in svr_lst:
+                total += config.server_power_specs[type_]['peak']
+        return total
+
 
 
 def test_popen_remote():
