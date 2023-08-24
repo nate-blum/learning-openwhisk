@@ -225,7 +225,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         val memory = r.action.limits.memory.megabytes.MB
 
         def coldStartContainer(isHealthTest: Boolean): Option[((ActorRef, ContainerData), String)] = {
-          if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, r.action.name.name.contains("invokerHealthTestAction"))) {
+          if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, isHealthTest)) {
             val container = Some(createContainer(memory), "cold")
             incrementColdStartCount(kind, memory)
             container
@@ -370,10 +370,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case NeedWork(data: PreWarmedData) =>
       prewarmStartingPool = prewarmStartingPool - sender()
       prewarmedPool = prewarmedPool + (sender() -> data)
+      processBufferOrFeed()
 
     case WarmCompleted(data: WarmedData) =>
       warmingPool = warmingPool - sender()
       freePool = freePool + (sender() -> data)
+      processBufferOrFeed()
 
     // Container got removed
     case ContainerRemoved(replacePrewarm) =>
