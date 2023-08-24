@@ -221,6 +221,14 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         val kind = r.action.exec.kind
         val memory = r.action.limits.memory.megabytes.MB
 
+        def coldStartContainer(isHealthTest: Boolean): Option[((ActorRef, ContainerData), String)] = {
+          if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, r.action.name.name.contains("invokerHealthTestAction"))) {
+            val container = Some(createContainer(memory), "cold")
+            incrementColdStartCount(kind, memory)
+            container
+          } else None
+        }
+
         val createdContainer =
           // Schedule a job to a warm container
           ContainerPool
@@ -232,14 +240,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
               takePrewarmContainer(r.action)
                 .map(container => (container, "prewarmed"))
                 .orElse {
-                  if (!poolConfig.enableColdStart ||
-                    (!poolConfig.alwaysColdStart && someContainerMatchesAction(r.action, r.msg.user.namespace.name, busyPool))) None
-                  // Is there enough space to create a new container or do other containers have to be removed?
-                  else if (poolConfig.enableColdStart && hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, r.action.name.name.contains("invokerHealthTestAction"))) {
-                    val container = Some(createContainer(memory), "cold")
-                    incrementColdStartCount(kind, memory)
-                    container
-                  } else None
+                  if (r.action.name.name.contains("invokerHealthTestAction")) coldStartContainer(true)
+                  else if (poolConfig.enableColdStart &&
+                    (poolConfig.alwaysColdStart ||
+                      (!poolConfig.alwaysColdStart && !someContainerMatchesAction(r.action, r.msg.user.namespace.name, busyPool))))
+                    coldStartContainer(false)
+                  else None
                 })
             .orElse {
               if (allowOpenWhiskToFreeMemory && poolConfig.enableColdStart) {
