@@ -28,7 +28,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                  ema_time_window_nsec: int, ema_bucket_nsec: int, arrival_ema_coeff: float,
                  cluster_update_rpc_server_port: str):
         # ----------------------------------------Configs-------------------------------
-        #self.DEFAULT_SERVER_TYPE: str = default_server_type
+        # self.DEFAULT_SERVER_TYPE: str = default_server_type
         self.TIMER_INTERVAL_SEC: float = q_update_timer_interval_sec
         self.ARRIVAL_Q_TIME_RANGE_LIMIT: int = arrival_q_time_range_limit
         self.EMA_TIME_WINDOW_NSEC: int = ema_time_window_nsec
@@ -46,7 +46,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
-        self.func_2_activationDict: dict[str, dict[str,int]] = defaultdict(dict) # {func: {activationId, arrivalTime}]}
+        self.func_2_activationDict: dict[str, dict[str, int]] = defaultdict(
+            dict)  # {func: {activationId, arrivalTime}]}
         # self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
         #                               'hello2': {'invocation3': 3000}} # for testing purpose
         self.activation_dict_lock = Lock()
@@ -65,13 +66,13 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         file_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
         file_handler.setFormatter(file_logger_formatter)
         file_handler.setLevel(logging.INFO)
-        #stream handler
+        # stream handler
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_logger_formatter = logging.Formatter('[%(asctime)s][%(levelname)s][%(filename)s %(lineno)d] %(message)s')
         stream_handler.setFormatter(stream_logger_formatter)
         stream_handler.setLevel(logging.INFO)
-        #must be called in main thread before any sub-thread starts
-        logging.basicConfig(level=logging.INFO, handlers=[stream_handler,file_handler])
+        # must be called in main thread before any sub-thread starts
+        logging.basicConfig(level=logging.INFO, handlers=[stream_handler, file_handler])
 
     def _select_invoker_to_dispatch(self, func_id_str: str) -> int:
         # NOTE,Current heuristic: route to a invoker with the probability proportional to how many container
@@ -84,7 +85,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                 lst_invokerId = self.func_2_invokerId[func_id_str]
                 total = self.func_2_containerCountSum[func_id_str]
                 return choice(lst_invokerId, p=np.array(lst_count) / total)
-        except KeyError:  # no corresponding container, cold start
+        except (KeyError, ValueError) as e:  # no corresponding container or no container at all, cold start
             response: GetRoutingColdStartResponse = self.cluster_update_stub.GetRoutingColdStart(
                 GetRoutingColdStartRequest(func_str=func_id_str))
             return response.invoker_selected
@@ -94,7 +95,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         activation_id: str = request.activationId
         assert "invokerHealthTestAction" != func_id_str[:23]
         logging.info(f"Received routing request from OW controller, {func_id_str}, activationId: {activation_id}")
-        #assert activation_id not in self.func_2_activationDict[func_id_str]
+        # assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:
             t = time_ns()
             self.func_2_activationDict[func_id_str][activation_id] = t
@@ -150,7 +151,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             curr_time_ns = time_ns()
             for func_id, arrival_deque in self.func_2_arrivalQueue.items():
                 delta = [0] * num_buckets
-                for t in arrival_deque: # [new old]
+                for t in arrival_deque:  # [new old]
                     bucket_index = (curr_time_ns - t) // self.BUCKET_NSEC
                     if bucket_index < num_buckets:
                         delta[bucket_index] += 1
@@ -164,7 +165,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                     ema = self.ARRIVAL_EMA_COEFF * delta[i] + (1 - self.ARRIVAL_EMA_COEFF) * ema
                 res[func_id] = ema / (most_recent_bucket_arrival + 1e-6)
         return routing_pb2.GetArrivalInfoResponse(query_count_1s=res_1s, query_count_3s=res_3s, func_2_arrivalEma=res)
-    def GetInvocationDict(self, request, context): # RPC call tested from python runtime
+
+    def GetInvocationDict(self, request, context):  # RPC call tested from python runtime
         respond = routing_pb2.GetInvocationDictResponse()
         with self.activation_dict_lock:
             for func, invocation_dict in self.func_2_activationDict.items():
@@ -172,6 +174,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                 respond.func2_invocationRecordList[func].arrivalTime.extend(invocation_dict.values())
             self.func_2_activationDict.clear()
             return respond
+
 
 def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,
                                      default_svr_type: str, q_update_timer_interval_sec: float,

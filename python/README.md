@@ -20,6 +20,7 @@ Important Configuration Variables:
 - How to Reset cluster for each function
 - **Check every feature & stats are reset proper at each step**
 - check if all the update are thread safe
+- **Rethink invocation routing algorithm**
 
 # TEST
 - add single container

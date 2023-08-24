@@ -68,7 +68,7 @@ def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocati
             assert False
     # compute latency for activation that are still in the local activation dict
     curr_time = time.time_ns()
-    for func, invocation2Arrival in func_2_invocation2Arrival:
+    for func, invocation2Arrival in func_2_invocation2Arrival.items():
         for invocation, arrivalTime in invocation2Arrival.items():
             func_2_latencyList[func].append(
                 round((curr_time - arrivalTime) / 1_000_000))  # convert nanosecond to millisecond

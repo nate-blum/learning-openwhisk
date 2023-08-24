@@ -31,7 +31,7 @@ class StatService(rpyc.Service):
         while True:
             for line in self.sub_process.stdout:
                 line_arr = line.strip().split()
-                container_id = line_arr[0][7:]
+                container_id = line_arr[0][7:] if line_arr[0][:7] =="\x1b[2J\x1b[H" else line_arr[0]
                 t = time.time()
                 with self.update_lock:
                     if container_id not in self.container_2_utilization:
