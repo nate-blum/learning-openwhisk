@@ -172,13 +172,13 @@ class InvokerReactive(
 
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
-      case NewWarmedContainerEvent(actionName, namespace, params) =>
+      case NewWarmedContainerEvent(actionName, namespace, corePin, params) =>
         logging.info(this, "new warmed container event")
         getExecutableAction(actionName, namespace)
           .flatMap(action =>
             action.toExecutableWhiskAction match {
                 case Some(executable) =>
-                  pool ! BeginFullWarm(executable, params, TransactionId.invoker)
+                  pool ! BeginFullWarm(executable, corePin, params, TransactionId.invoker)
                   Future.successful(())
                 case None =>
                   logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
@@ -351,7 +351,7 @@ class InvokerReactive(
     val actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long) = Await.result(pool ? GetActionStates(), timeout.duration)
       .asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)]
     val p = PingMessage(instance, actionStates, isEnabled = Some(isEnabled))
-    logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
+//    logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
     healthProducer.send(s"${Invoker.topicPrefix}health", p).andThen {
       case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
     }

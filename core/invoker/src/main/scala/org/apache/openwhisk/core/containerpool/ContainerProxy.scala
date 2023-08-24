@@ -73,7 +73,7 @@ case object Removing extends ContainerState
 
 // Data
 /** Base data type */
-sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: ByteSize, val activeActivationCount: Int) {
+sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: ByteSize, val activeActivationCount: Int, val corePin: String) {
 
   /** When ContainerProxy in this state is scheduled, it may result in a new state (ContainerData)*/
   def nextRun(r: Run): ContainerData
@@ -94,8 +94,9 @@ sealed abstract class ContainerData(val lastUsed: Instant, val memoryLimit: Byte
 /** abstract type to indicate an unstarted container */
 sealed abstract class ContainerNotStarted(override val lastUsed: Instant,
                                           override val memoryLimit: ByteSize,
-                                          override val activeActivationCount: Int)
-    extends ContainerData(lastUsed, memoryLimit, activeActivationCount) {
+                                          override val activeActivationCount: Int,
+                                          override val corePin: String)
+    extends ContainerData(lastUsed, memoryLimit, activeActivationCount, corePin) {
   override def getContainer = None
   override val initingState = "cold"
 }
@@ -104,8 +105,9 @@ sealed abstract class ContainerNotStarted(override val lastUsed: Instant,
 sealed abstract class ContainerStarted(val container: Container,
                                        override val lastUsed: Instant,
                                        override val memoryLimit: ByteSize,
-                                       override val activeActivationCount: Int)
-    extends ContainerData(lastUsed, memoryLimit, activeActivationCount) {
+                                       override val activeActivationCount: Int,
+                                       override val corePin: String)
+    extends ContainerData(lastUsed, memoryLimit, activeActivationCount, corePin) {
   override def getContainer = Some(container)
 }
 
@@ -124,16 +126,16 @@ sealed abstract trait ContainerNotInUse {
 
 /** type representing a cold (not running) container */
 case class NoData(override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(Instant.EPOCH, 0.B, activeActivationCount)
+    extends ContainerNotStarted(Instant.EPOCH, 0.B, activeActivationCount, "")
     with ContainerNotInUse {
-  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
+  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, corePin, 1)
 }
 
 /** type representing a cold (not running) container with specific memory allocation */
 case class MemoryData(override val memoryLimit: ByteSize, override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(Instant.EPOCH, memoryLimit, activeActivationCount)
+    extends ContainerNotStarted(Instant.EPOCH, memoryLimit, activeActivationCount, "")
     with ContainerNotInUse {
-  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, 1)
+  override def nextRun(r: Run) = WarmingColdData(r.msg.user.namespace.name, r.action, Instant.now, corePin, 1)
 }
 
 /** type representing a prewarmed (running, but unused) container (with a specific memory allocation) */
@@ -141,12 +143,13 @@ case class PreWarmedData(override val container: Container,
                          kind: String,
                          override val memoryLimit: ByteSize,
                          override val activeActivationCount: Int = 0,
+                         override val corePin: String,
                          expires: Option[Deadline] = None)
-    extends ContainerStarted(container, Instant.EPOCH, memoryLimit, activeActivationCount)
+    extends ContainerStarted(container, Instant.EPOCH, memoryLimit, activeActivationCount, corePin)
     with ContainerNotInUse {
   override val initingState = "prewarmed"
   override def nextRun(r: Run) =
-    WarmingData(container, r.msg.user.namespace.name, r.action, Instant.now, 1)
+    WarmingData(container, r.msg.user.namespace.name, r.action, Instant.now, corePin, 1)
   def isExpired(): Boolean = expires.exists(_.isOverdue())
 }
 
@@ -155,8 +158,9 @@ case class WarmingData(override val container: Container,
                        invocationNamespace: EntityName,
                        action: ExecutableWhiskAction,
                        override val lastUsed: Instant,
+                       override val corePin: String,
                        override val activeActivationCount: Int = 0)
-    extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
+    extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount, corePin)
     with ContainerInUse {
   override val initingState = "warming"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -166,8 +170,9 @@ case class WarmingData(override val container: Container,
 case class WarmingColdData(invocationNamespace: EntityName,
                            action: ExecutableWhiskAction,
                            override val lastUsed: Instant,
+                           override val corePin: String,
                            override val activeActivationCount: Int = 0)
-    extends ContainerNotStarted(lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
+    extends ContainerNotStarted(lastUsed, action.limits.memory.megabytes.MB, activeActivationCount, corePin)
     with ContainerInUse {
   override val initingState = "warmingCold"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -178,10 +183,11 @@ case class WarmedData(override val container: Container,
                       invocationNamespace: EntityName,
                       action: ExecutableWhiskAction,
                       override val lastUsed: Instant,
+                      override val corePin: String,
                       override val activeActivationCount: Int = 0,
                       resumeRun: Option[Run] = None,
                       params: Option[Map[String, Set[String]]] = None)
-    extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount)
+    extends ContainerStarted(container, lastUsed, action.limits.memory.megabytes.MB, activeActivationCount, corePin)
     with ContainerInUse {
   override val initingState = "warmed"
   override def nextRun(r: Run) = copy(lastUsed = Instant.now, activeActivationCount = activeActivationCount + 1)
@@ -191,9 +197,9 @@ case class WarmedData(override val container: Container,
 }
 
 // Events received by the actor
-case class Start(exec: CodeExec[_], memoryLimit: ByteSize, ttl: Option[FiniteDuration] = None)
-case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, retryLogDeadline: Option[Deadline] = None)
-case class BeginFullWarm(action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
+case class Start(exec: CodeExec[_], memoryLimit: ByteSize, corePin: String = "", ttl: Option[FiniteDuration] = None)
+case class Run(action: ExecutableWhiskAction, msg: ActivationMessage, corePin: String = "", retryLogDeadline: Option[Deadline] = None)
+case class BeginFullWarm(action: ExecutableWhiskAction, corePin: String, params: Map[String, Set[String]], transid: TransactionId)
 case object Remove
 case class HealthPingEnabled(enabled: Boolean)
 
@@ -203,7 +209,7 @@ case object ContainerPaused
 case class ContainerRemoved(replacePrewarm: Boolean) // when container is destroyed
 case object RescheduleJob // job is sent back to parent and could not be processed because container is being destroyed
 case class PreWarmCompleted(data: PreWarmedData)
-case class Warm(container: Container, action: ExecutableWhiskAction, params: Map[String, Set[String]], transid: TransactionId)
+case class Warm(container: Container, action: ExecutableWhiskAction, corePin: String, params: Map[String, Set[String]], transid: TransactionId)
 case class WarmCompleted(data: WarmedData)
 case class InitCompleted(data: WarmedData)
 case object RunCompleted
@@ -292,10 +298,10 @@ class ContainerProxy(factory: (TransactionId,
         job.exec.pull,
         job.memoryLimit,
         poolConfig.cpuShare(job.memoryLimit),
-        Map.empty,
+        Map("--cpuset-cpus" -> Set(job.corePin)),
         None)
         .map(container =>
-          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, expires = job.ttl.map(_.fromNow))))
+          PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, corePin = job.corePin, expires = job.ttl.map(_.fromNow))))
         .pipeTo(self)
 
       goto(Starting)
@@ -309,15 +315,15 @@ class ContainerProxy(factory: (TransactionId,
       factory(
         TransactionId.invokerWarmup,
         ContainerProxy.containerName(instance, "warm",
-          s"${kind}_${job.action.name.name}${if (job.params.contains("--cpuset-cpus")) s"_pin_${job.params.get("--cpuset-cpus").get.head}" else ""}"),
+          s"${kind}_${job.action.name.name}_pin_${job.corePin}"),
         job.action.exec.image,
         job.action.exec.pull,
         memory,
         poolConfig.cpuShare(memory),
-        job.params,
+        job.params + ("--cpuset-cpus" -> Set(job.corePin)),
         None)
         .map(container =>
-          Warm(container, job.action, job.params, job.transid))
+          Warm(container, job.action, job.corePin, job.params, job.transid))
         .pipeTo(self)
 
       goto(Starting)
@@ -334,7 +340,7 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.pull,
         job.action.limits.memory.megabytes.MB,
         poolConfig.cpuShare(job.action.limits.memory.megabytes.MB),
-        Map.empty,
+        Map("--cpuset-cpus" -> Set(job.corePin)),
         Some(job.action))
 
       // container factory will either yield a new container ready to execute the action, or
@@ -346,7 +352,7 @@ class ContainerProxy(factory: (TransactionId,
             // the container is ready to accept an activation; register it as PreWarmed; this
             // normalizes the life cycle for containers and their cleanup when activations fail
             self ! PreWarmCompleted(
-              PreWarmedData(container, job.action.exec.kind, job.action.limits.memory.megabytes.MB, 1, expires = None))
+              PreWarmedData(container, job.action.exec.kind, job.action.limits.memory.megabytes.MB, 1, job.corePin, expires = None))
 
           case Failure(t) =>
             // the container did not come up cleanly, so disambiguate the failure mode and then cleanup
@@ -394,7 +400,7 @@ class ContainerProxy(factory: (TransactionId,
       logging.info(this, "prewarm completed, warming")
       implicit val transid = w.transid
       initialize(w.container, w.action)
-        .map(_ => WarmCompleted(WarmedData(w.container, EntityName(w.action.namespace.namespace), w.action, null, params = Some(w.params))))
+        .map(_ => WarmCompleted(WarmedData(w.container, EntityName(w.action.namespace.namespace), w.action, null, w.corePin, params = Some(w.params))))
         .pipeTo(self)
       stay
 
@@ -418,7 +424,7 @@ class ContainerProxy(factory: (TransactionId,
       initializeAndRun(data.container, job)
         .map(_ => RunCompleted)
         .pipeTo(self)
-      goto(Running) using PreWarmedData(data.container, data.kind, data.memoryLimit, 1, data.expires)
+      goto(Running) using PreWarmedData(data.container, data.kind, data.memoryLimit, 1, data.corePin, data.expires)
 
     case Event(Remove, data: PreWarmedData) =>
       logging.info(this, "remove, started, prewarmeddata")
@@ -918,7 +924,7 @@ class ContainerProxy(factory: (TransactionId,
       .flatMap { initInterval =>
         //immediately setup warmedData for use (before first execution) so that concurrent actions can use it asap
         if (initInterval.isDefined) {
-          self ! InitCompleted(WarmedData(container, job.msg.user.namespace.name, job.action, Instant.now, 1))
+          self ! InitCompleted(WarmedData(container, job.msg.user.namespace.name, job.action, Instant.now, job.corePin, 1))
         }
 
         val env = authEnvironment ++ environment ++ Map(

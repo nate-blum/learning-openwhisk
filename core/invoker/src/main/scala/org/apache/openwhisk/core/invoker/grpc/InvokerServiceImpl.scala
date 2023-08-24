@@ -33,7 +33,7 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
   }
 
   override def newWarmedContainer(request: NewWarmedContainerRequest): Future[SuccessResponse] = {
-    handleEvent(NewWarmedContainerEvent(request.actionName, "guest", request.params.map { case (k, v) => (k, Set(v))}))
+    handleEvent(NewWarmedContainerEvent(request.actionName, "guest", request.corePin, request.params.map { case (k, v) => (k, Set(v))}))
     Future.successful(SuccessResponse(true))
   }
 
@@ -65,7 +65,7 @@ object InvokerServiceImpl {
 
 // new warmed container event - received by ContainerPool
 trait InvokerRPCEvent
-case class NewWarmedContainerEvent(actionName: String, namespace: String, params: Map[String, Set[String]]) extends InvokerRPCEvent
+case class NewWarmedContainerEvent(actionName: String, namespace: String, corePin: String, params: Map[String, Set[String]]) extends InvokerRPCEvent
 case class DeleteRandomContainerEvent(actionName: String, namespace: String) extends InvokerRPCEvent
 case class DeleteContainerWithIdEvent(containerId: String) extends InvokerRPCEvent
 case class SetAllowOpenWhiskToFreeMemoryEvent(setValue: Boolean) extends InvokerRPCEvent
