@@ -176,6 +176,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case DeleteRandomContainer(action) =>
       getContainerForDeletionWithPriority(action, freePool ++ busyPool) match {
         case Some(c) =>
+          logging.info(this, s"deleting container id ${c._2.getContainer.get.containerId.asString}")
           removeContainer((c._1, c._2.corePin))
         case None =>
           logging.info(this, s"no warm containers for action ${action.name}, either free or busy, were found on this invoker to be deleted")
@@ -214,8 +215,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     // their requests and send them back to the pool for rescheduling (this may happen if "docker" operations
     // fail for example, or a container has aged and was destroying itself when a new request was assigned)
     case r: Run =>
-      logging.info(this, "pool config")
-      println(poolConfig)
+//      logging.info(this, "pool config")
+//      println(poolConfig)
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
       val isResentFromBuffer = runBuffer.nonEmpty && runBuffer.dequeueOption.exists(_._1.msg == r.msg)
 
@@ -558,7 +559,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Removes a container and updates state accordingly. */
   def removeContainer(c: (ActorRef, String)) = {
-    logging.info(this, "removing container")
+//    logging.info(this, "removing container")
     val (toDelete, corePin) = c
     toDelete ! Remove
     freePool = freePool - toDelete
@@ -670,7 +671,6 @@ object ContainerPool {
   protected[containerpool] def schedule[A](action: ExecutableWhiskAction,
                                            invocationNamespace: EntityName,
                                            idles: Map[A, ContainerData]): Option[(A, ContainerData)] = {
-    println("ContainerPool: schedule")
     idles
       .find {
         case (_, c @ WarmedData(_, `invocationNamespace`, `action`, _, _, _, _, _)) if c.hasCapacity() => true

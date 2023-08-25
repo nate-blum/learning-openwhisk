@@ -71,8 +71,6 @@ trait ActivationStore {
                       context: UserContext)(implicit transid: TransactionId,
                                             notifier: Option[CacheChangeNotification],
                                             logging: Logging): Future[DocInfo] = {
-    logging.info(this, "storing activation activationstore")
-
     if (context.user.limits.storeActivations.getOrElse(true) &&
         shouldStoreActivation(
           activation.response,

@@ -612,7 +612,6 @@ protected[actions] trait PrimitiveActions {
       }
     }
 
-    logging.info(this, "storing primitive actions")
     activationStore.storeAfterCheck(activation, blockingComposition, None, None, context)(
       transid,
       notifier = None,

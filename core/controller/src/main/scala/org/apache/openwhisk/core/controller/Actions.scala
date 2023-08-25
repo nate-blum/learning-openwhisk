@@ -243,25 +243,6 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
    */
   override def activate(user: Identity, entityName: FullyQualifiedEntityName, env: Option[Parameters])(
     implicit transid: TransactionId) = {
-    val uvars = user.getClass.getDeclaredFields
-    for (v <- uvars) {
-      v.setAccessible(true)
-      println("user Field: " + v.getName() + " => " + v.get(user))
-    }
-
-    val evars = entityName.getClass.getDeclaredFields
-    for (v <- evars) {
-      v.setAccessible(true)
-      println("entityname Field: " + v.getName() + " => " + v.get(entityName))
-    }
-
-    val envars = env.getClass.getDeclaredFields
-    for (v <- envars) {
-      v.setAccessible(true)
-      println("env Field: " + v.getName() + " => " + v.get(env))
-    }
-
-
     parameter(
       'blocking ? false,
       'result ? false,
@@ -275,12 +256,6 @@ trait WhiskActionsApi extends WhiskCollectionAPI with PostActionActivation with 
               onComplete(entitleReferencedEntitiesMetaData(user, Privilege.ACTIVATE, Some(action.exec))) {
                 case Success(_) =>
                   val actionWithMergedParams = env.map(action.inherit(_)) getOrElse action
-
-                  val avars = actionWithMergedParams.getClass.getDeclaredFields
-                  for (v <- avars) {
-                    v.setAccessible(true)
-                    println("awmp Field: " + v.getName() + " => " + v.get(actionWithMergedParams))
-                  }
 
                   // incoming parameters may not override final parameters (i.e., parameters with already defined values)
                   // on an action once its parameters are resolved across package and binding
