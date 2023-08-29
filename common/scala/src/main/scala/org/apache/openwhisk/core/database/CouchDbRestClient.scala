@@ -59,16 +59,12 @@ class CouchDbRestClient(protocol: String, host: String, port: Int, username: Str
   }
 
   // http://docs.couchdb.org/en/1.6.1/api/document/common.html#put--db-docid
-  def putDoc(id: String, doc: JsObject): Future[Either[StatusCode, JsObject]] = {
-    logging.info(this, "putting doc")
+  def putDoc(id: String, doc: JsObject): Future[Either[StatusCode, JsObject]] =
     requestJson[JsObject](mkJsonRequest(HttpMethods.PUT, uri(db, id), doc, baseHeaders))
-  }
 
   // http://docs.couchdb.org/en/1.6.1/api/document/common.html#put--db-docid
-  def putDoc(id: String, rev: String, doc: JsObject): Future[Either[StatusCode, JsObject]] = {
-    logging.info(this, "putting doc revs")
+  def putDoc(id: String, rev: String, doc: JsObject): Future[Either[StatusCode, JsObject]] =
     requestJson[JsObject](mkJsonRequest(HttpMethods.PUT, uri(db, id), doc, baseHeaders ++ revHeader(rev)))
-  }
 
   // http://docs.couchdb.org/en/2.1.0/api/database/bulk-api.html#inserting-documents-in-bulk
   def putDocs(docs: Seq[JsObject]): Future[Either[StatusCode, JsArray]] =

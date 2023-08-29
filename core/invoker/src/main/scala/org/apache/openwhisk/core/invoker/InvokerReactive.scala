@@ -43,7 +43,7 @@ import pureconfig.generic.auto._
 import spray.json._
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 object InvokerReactive extends InvokerProvider {
@@ -141,7 +141,7 @@ class InvokerReactive(
   /** Stores an activation in the database. */
   private val store = (tid: TransactionId, activation: WhiskActivation, isBlocking: Boolean, context: UserContext) => {
     implicit val transid: TransactionId = tid
-    logging.info(this, "storing activation invokerreactive")
+//    logging.info(this, "storing activation invokerreactive")
     activationStore.storeAfterCheck(activation, isBlocking, None, None, context)(tid, notifier = None, logging)
   }
 
@@ -172,13 +172,13 @@ class InvokerReactive(
 
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
-      case NewWarmedContainerEvent(actionName, namespace, params) =>
-        logging.info(this, "new warmed container event")
+      case NewWarmedContainerEvent(actionName, namespace, corePin, params) =>
+//        logging.info(this, "new warmed container event")
         getExecutableAction(actionName, namespace)
           .flatMap(action =>
             action.toExecutableWhiskAction match {
                 case Some(executable) =>
-                  pool ! BeginFullWarm(executable, params, TransactionId.invoker)
+                  pool ! BeginFullWarm(executable, corePin, params, TransactionId.invoker)
                   Future.successful(())
                 case None =>
                   logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
@@ -186,7 +186,7 @@ class InvokerReactive(
               }
           )
       case DeleteRandomContainerEvent(actionName, namespace) =>
-        logging.info(this, "delete warmed container event")
+//        logging.info(this, "delete warmed container event")
         getExecutableAction(actionName, namespace)
           .flatMap(action =>
             action.toExecutableWhiskAction match {
@@ -258,8 +258,8 @@ class InvokerReactive(
             msg.user.namespace.uuid,
             CombinedCompletionAndResultMessage(transid, activation, instance))
 
-          println(activation)
-          logging.info(this, "storing activation")
+//          println(activation)
+//          logging.info(this, "storing activation")
 
           store(msg.transid, activation, msg.blocking, UserContext(msg.user))
           Future.successful(())
@@ -343,16 +343,20 @@ class InvokerReactive(
   private val healthProducer = msgProvider.getProducer(config)
 
   private def getHealthScheduler: ActorRef =
-    Scheduler.scheduleWaitAtMost(1.seconds)(() => pingController(isEnabled = true))
+    Scheduler.scheduleWaitAtMost(poolConfig.clusterStatePingInterval)(() => pingController(isEnabled = true))
 
   private def pingController(isEnabled: Boolean) = {
     implicit val timeout: Timeout = 10.seconds
-    val actionStates: (Map[ContainerListKey, Iterable[(String, String)]], Long) = Await.result(pool ? GetActionStates(), timeout.duration)
-      .asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)]
-    val p = PingMessage(instance, actionStates, isEnabled = Some(isEnabled))
-    logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
-    healthProducer.send(s"${Invoker.topicPrefix}health", p).andThen {
-      case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
+//    pool ! PrintRunBuffer()
+    (pool ? GetActionStates()) map {
+      case Success(actionStates) =>
+        val p = PingMessage(instance, actionStates.asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)], isEnabled = Some(isEnabled))
+//        logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
+        healthProducer.send(s"${Invoker.topicPrefix}health", p).andThen {
+          case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
+        }
+      case Failure(exception) =>
+        logging.error(this, s"failed to get action states from container pool on invoker ${instance.instance}, ${exception.getMessage}")
     }
   }
 

@@ -180,7 +180,7 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
       case Success(p: PingMessage) =>
         self ! p
         invokerPingFeed ! MessageFeed.Processed
-        logging.info(this,s"successfully processing message: $raw, ${p.transid}")
+//        logging.info(this,s"successfully processing message: $raw, ${p.transid}")
 
       case Failure(t) =>
         invokerPingFeed ! MessageFeed.Processed
