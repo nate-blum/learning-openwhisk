@@ -54,7 +54,7 @@ workload_config = {
 }
 initialize_env = {
     'whether_initialize_env': True,
-    'warm_cnt_each_invoker': 1
+    'warm_cnt_per_type': 1
 }
 log_mode = 'warn'
 

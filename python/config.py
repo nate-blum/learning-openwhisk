@@ -24,7 +24,7 @@ default_svr_type = 'xs'
 workload_characteristics = {
     'sla': {
         'func1': 500,
-        'func2': 1500
+        'func2': 1000
     }
 }
 

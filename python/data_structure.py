@@ -29,4 +29,8 @@ class ActionRealizeCounter:
         self.add_success = 0
         self.add_fail = 0
         self.delete_success = 0
+    def clear(self):
+        self.add_success = 0
+        self.add_fail = 0
+        self.delete_success = 0
 

@@ -21,6 +21,7 @@ Important Configuration Variables:
 - **Check every feature & stats are reset proper at each step**
 - check if all the update are thread safe
 - **Rethink invocation routing algorithm**
+- Config the PDU
 
 # TEST
 - add single container
@@ -29,3 +30,5 @@ Important Configuration Variables:
 
 # Different From Simulator
 - Simulator function selection is P95, reward is P99 <--> Real wsk all use p99
+- When select the active function, the usage of latency tail: only finished record, within a window <----> include both waiting
+and finished invocation

@@ -46,26 +46,19 @@ class Test:
         # for invoker in self.cluster.id_2_invoker.values():
         #     invoker.rpc_reset_invoker()
         # <---------------Test start container--------------->
-        #self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
-        #self.cluster.take_action({1: data_structure.Action(container_delta=1,type='xs')})
-        #while True:
+        # self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
+        # self.cluster.take_action({1: data_structure.Action(container_delta=1,type='xs')})
+        # while True:
         #    time.sleep(10)
         # self.cluster.update_activation_record()
-        # self.cluster.reset()
-        # time.sleep(10) # after the invocation is done
-        # self.cluster.step(np.array([0, -1, 0, -1]))
-        self.cluster.get_avg_busy_container_utilization_per_type(['func1', 'func2'])
-
-
-
-
-
-
-
-
-
-
-
+        self.cluster.reset()
+        # time.sleep(6) # after the invocation is done
+        n = 0
+        while n < 20:
+            logging.info(f"------------------------------Step {n}---------------------------------------------------")
+            self.cluster.step(np.array([0, -1, 0, -1]))
+            n += 1
+        # self.cluster.get_avg_busy_container_utilization_per_type(['func1', 'func2'])
 
 
 if __name__ == '__main__':
