@@ -46,7 +46,8 @@ message ResetInvokerRequest {}
 // pin -> core pin string
 message NewWarmedContainerRequest {
   string actionName = 1;
-  map<string, string> params = 2;
+  string corePin = 2;
+  map<string, string> params = 3;
 }
 
 message DeleteRandomContainerRequest {

@@ -80,13 +80,13 @@ def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocati
         try:
             del func_2_invocation2Arrival[func_name][activation['activationId']]
         except Exception as e:
-            logging.error(f"Delete activation record failed: {e}")
+            logging.error(f"Delete activation record failed (db record must be in local arrival dict): {e}")
             assert False
     _validate_FIFO_execution(func_2_invocation2Arrival,_validation_early_arrival_db_record)
     num_local_invocation_record_after = sum([len(i) for i in func_2_invocation2Arrival.values()])
     logging.info(
         f"func_2_invocation2Arrival # before: {num_local_invocation_record} # after:{num_local_invocation_record_after}, # db queried: {num_db_record}")
-    # include activation that are still in the local activation dict
+    # include activation that are still in the local activation dict (in the queue)
     curr_time = time.time_ns()
     for func, invocation2Arrival in func_2_invocation2Arrival.items():
         for invocation, arrivalTime in invocation2Arrival.items():

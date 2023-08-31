@@ -31,6 +31,7 @@ from invoker_client import invoker_pb2 as invoker_types
 from invoker_client.invoker_pb2 import DeleteContainerWithIdRequest, SuccessResponse, ResetInvokerRequest
 from invoker_client import invoker_pb2_grpc as invoker_service
 from controller_server import clusterstate_pb2, clusterstate_pb2_grpc, routing_pb2_grpc, routing_pb2
+from controller_server.routing_pb2 import EmptyRequest
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
 from reward import compute_reward_using_overall_stat
 from grpc_reflection.v1alpha import reflection
@@ -82,7 +83,7 @@ INVOKER_PYTHON_PATH = config_local.invoker_py_path
 INVOKER_SOURCE_PATH = config_local.invoker_source_path
 INVOKER_PY_RPC_PORT = config_local.invoker_py_rpc_port
 INIT_WARM_CONTAINER_COUNT_PER_TYPE = training_configs.initialize_env['warm_cnt_per_type']
-#---
+# ---
 MORE_THAN_2_FUNC = training_configs.select_func_params['more_than_2_funcs']
 
 
@@ -138,9 +139,11 @@ class Invoker:
 
     def rpc_add_container(self, action_name: str, pinned_core: List[int]) -> None:
         logging.info(f"Starting a new container for {action_name}, pin core: {pinned_core}")
-        resp = self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name, params={
-            "--cpuset-cpus": ",".join([str(core) for core in pinned_core])
-        }))
+        resp = self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name,
+                                                                                    corePin=",".join(
+                                                                                        [str(core) for core in
+                                                                                         pinned_core]),
+                                                                                    params={}))
         logging.info(f"adding container res: {resp}")
 
     def rpc_delete_container(self, container_id: str, func_name: str):
@@ -403,16 +406,18 @@ class Cluster:
                 # {func_num_id: Action}
                 action_mp: dict[int, Action] = {}
                 for func_id in func_id_list:
-                    action_mp[func_id] = Action(container_delta=1,freq=3000,type=type_, target_load=1.0)
+                    action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
                 self.take_action(action_mp)
 
     def roll_out_stop(self):
         # called after the last step
-        global_signal_queue.put(['reset', 0]) # the start call will reset the line pointer again
+        global_signal_queue.put(['reset', 0])  # the start call will reset the line pointer again
+
     def reset(self, seed=None, options=None):
         # NOTE, make sure relevant data structure is reset correctly
         for invoker in self.id_2_invoker.values():
-            invoker.rpc_reset_invoker() # reset the invoker: delete all containers
+            invoker.rpc_reset_invoker()  # reset the invoker: delete all containers
+        self.routing_stub.ResetRoutingServiceState(EmptyRequest())
         self.actionRealizeCounter.clear()
         self.func_2_invocation2Arrival.clear()
         self.stats.reset_coldstart()  # reset cold start count, in lock
@@ -426,13 +431,12 @@ class Cluster:
         if options:
             workload_line_start = options['workload_start']
             if 'random_start' in options and options['random_start']:
-                workload_line_start += random.randint(0,2000)
-        self.first_update_arrival_event = threading.Event()
+                workload_line_start += random.randint(0, 2000)
+        self.first_update_arrival_event.clear()
         self.first_update_arrival_event.wait()
         global_signal_queue.put(["start", workload_line_start])
-        obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda : defaultdict(list)))
+        obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda: defaultdict(list)))
         return obs, self.state_info
-
 
     def _map_action(self, simple_action: np.ndarray) -> Dict[int, Action]:
         # the output is sample from Normal distribution, they should be mapped as real control operation
@@ -670,7 +674,7 @@ class Cluster:
                               arrival_info.func_2_arrivalEma[func_str],
                               # NOTE the real meaning of "cold start" with different setting. It's different than Openwhisk
                               self.stats.get_cold_start_count(func_str),
-                              func_2_tail_latency[func_str] # NOTE, rethink: new added, include all queueing jobs
+                              func_2_tail_latency[func_str]  # NOTE, rethink: new added, include all queueing jobs
                               ]
             container_per_type_dict = self._state_get_num_container_per_type(func_str)
             for type_ in self.server_types:

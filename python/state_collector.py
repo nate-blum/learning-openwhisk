@@ -34,7 +34,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # NOTE, must make sure every related data structure is updated properly, must make sure every [func][invoker] pair is updated ???!!!
         # NOTE, each invoker will have an entry, but not all the function registered will have an entry
         # ({funcStr:ActionState}, freeMem(MB))
-        #logging.info(f"Received state update RPC from OW controller, request: {request}")
+        logging.info(f"Received state update RPC from OW controller, request: {request}")
         touched_func_invoker_set: set[tuple[str, int]] = set()  # contain the func that has been touched by the update
         with self.cluster.cluster_state_lock:
             assert list(request.clusterState.actionStatePerInvoker.keys()).sort() == list(
@@ -100,7 +100,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                 logging.error(f"Exception {e}")
         self.cluster.last_cluster_staste_update_time = time.time()
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
-        # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
+        logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
         self.cluster.first_update_arrival_event.set()  # mark there is at least one update
         return UpdateClusterStateResponse()
 
