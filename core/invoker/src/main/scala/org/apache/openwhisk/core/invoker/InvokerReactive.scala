@@ -349,14 +349,23 @@ class InvokerReactive(
     implicit val timeout: Timeout = 10.seconds
 //    pool ! PrintRunBuffer()
     (pool ? GetActionStates()) map {
-      case Success(actionStates) =>
-        val p = PingMessage(instance, actionStates.asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)], isEnabled = Some(isEnabled))
-//        logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
-        healthProducer.send(s"${Invoker.topicPrefix}health", p).andThen {
-          case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
-        }
-      case Failure(exception) =>
-        logging.error(this, s"failed to get action states from container pool on invoker ${instance.instance}, ${exception.getMessage}")
+      // case Success(actionStates) =>
+      //   val p = PingMessage(instance, actionStates.asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)], isEnabled = Some(isEnabled))
+      //   logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
+      //   healthProducer.send(s"${Invoker.topicPrefix}health", p).andThen {
+      //     case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
+      //   }
+      // case Failure(exception) =>
+      //   logging.error(this, s"failed to get action states from container pool on invoker ${instance.instance}, ${exception.getMessage}")
+      // case _ =>
+      //   logging.error(this, "GetActionState match not Success or Failure")
+      actionStates => 
+         val p = PingMessage(instance, actionStates.asInstanceOf[(Map[ContainerListKey, Iterable[(String, String)]], Long)], isEnabled = Some(isEnabled))
+         logging.info(this, s"Sending PingMessage: $p, ${p.transid}")
+         healthProducer.send(s"${Invoker.topicPrefix}health", p).andThen {
+           case Failure(t) => logging.error(this, s"failed to ping the controller: $t")
+         }
+
     }
   }
 
