@@ -35,6 +35,8 @@ service RoutingService {
   rpc NotifyClusterInfo(NotifyClusterInfoRequest) returns (NotifyClusterInfoResponse) {}
 
   rpc GetInvocationDict (EmptyRequest) returns (GetInvocationDictResponse) {}
+
+  rpc ResetRoutingServiceState(EmptyRequest) returns (EmptyRequest) {}
 }
 
 message EmptyRequest {} // placeholder type for request

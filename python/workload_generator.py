@@ -10,7 +10,7 @@ from utility import get_curr_time
 
 
 class WorkloadGenerator:
-    MAX_INVOCATION = 3 # for testing
+    DELAY_START_SEC = 1 # sleep 1 second before start issuing request
     def __init__(self, shared_queue: Queue, start_pointer: int, trace_file: str, wsk_path: str):
         self.q: Queue = shared_queue  # sharing command from main process to workload generator process
         self.state: str = "reset"
@@ -19,6 +19,7 @@ class WorkloadGenerator:
         self.trace_size = len(self.trace)
         self.ow_client = OpenwhiskClient(wsk_path)
         self.last_req_t = 0
+        self.MAX_INVOCATION = len(self.trace)  # for testing, TODO, make it configurable
         # ---------------------------------------
         self.binary_data_cache = {}
         self.sto_stream = self.setup_logging()
@@ -56,6 +57,7 @@ class WorkloadGenerator:
                         if signal[0] == "start":
                             logging.info(f"workload FSM state change: {self.state}->Start")
                             self.state = "start"
+                            sleep(self.DELAY_START_SEC) # sleep when reset --> start
                         else:  # must be signal[0] == "reset"
                             self.line_pointer = signal[1]
                             self.last_req_t = 0
@@ -73,8 +75,8 @@ class WorkloadGenerator:
                             continue
                     self.send_request()
                     self.count += 1
-                    if self.count > self.MAX_INVOCATION:
-                        sleep(10)
+                    if self.count == self.MAX_INVOCATION:
+                        continue
 
     def send_request(self):
         mod_line = (self.line_pointer + self.trace_size) % self.trace_size

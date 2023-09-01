@@ -11,6 +11,7 @@ from concurrent import futures
 from controller_server import routing_pb2
 from controller_server import routing_pb2_grpc, clusterstate_pb2_grpc
 from controller_server.clusterstate_pb2 import GetRoutingColdStartRequest, GetRoutingColdStartResponse
+from controller_server.routing_pb2 import EmptyRequest
 from time import time_ns
 from threading import Lock, Thread
 import utility
@@ -40,13 +41,14 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         # might be accessed from multiple thread
         self.func_2_arrivalQueue: defaultdict[str, deque] = defaultdict(
             deque)  # deque's append operation is thread-safe, but we still use lock
-
+        # --------will be updated by main process on reset--------
         self.func_2_containerSumList: Dict[str, List[int]] = {}
         self.func_2_invokerId: Dict[str, List[int]] = {}  # pair with the above
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
+        # ----------------------------------------------------------
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
-        self.func_2_activationDict: dict[str, dict[str, int]] = defaultdict(
+        self.func_2_activationDict: defaultdict[str, dict[str, int]] = defaultdict(
             dict)  # {func: {activationId, arrivalTime}]}
         # self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
         #                               'hello2': {'invocation3': 3000}} # for testing purpose
@@ -106,7 +108,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
-        logging.info(f"Receive state update notification:|{request}|")
+        #logging.info(f"Receive state update notification:|{request}|")
         with self.lock_routing_info:
             for func_id_str, container_counter in request.func_2_ContainerCounter.items():
                 self.func_2_containerSumList[func_id_str] = container_counter.count
@@ -146,7 +148,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                 res_1s[func_id] = counter_1s
                 res_3s[func_id] = counter_1s + counter_23s
         with self.lock_arrival_q:  # do not put all the computation under one-time lock (locking too long time is not good)
-            res = {}
+            res = {} #TODO, possibly could be calculated based on previous result
             num_buckets = self.EMA_TIME_WINDOW_NSEC // self.BUCKET_NSEC
             curr_time_ns = time_ns()
             for func_id, arrival_deque in self.func_2_arrivalQueue.items():
@@ -174,6 +176,13 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                 respond.func2_invocationRecordList[func].arrivalTime.extend(invocation_dict.values())
             self.func_2_activationDict.clear()
             return respond
+    def ResetRoutingServiceState(self, request, context):
+        # reset the state
+        with self.lock_arrival_q:
+            self.func_2_arrivalQueue.clear()
+        with self.activation_dict_lock:
+            self.func_2_activationDict.clear()
+        return EmptyRequest()
 
 
 def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,

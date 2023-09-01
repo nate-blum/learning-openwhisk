@@ -1,5 +1,6 @@
 # will run in the training agent process
 import pprint
+from collections import defaultdict
 import logging
 import time
 from controller_server import clusterstate_pb2_grpc, routing_pb2
@@ -17,19 +18,33 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         self.stats_update_lock = Lock()
         self.warming_dummy_id = 0
 
+    def _clear_stale_info(self, touch_func_invoker_set: set[tuple[str, int]]):
+        # get rid of stale record in the information dict
+        for func in self.cluster.strId_2_funcs.keys():
+            for invoker in self.cluster.id_2_invoker.values():
+                if (func, invoker.id) in touch_func_invoker_set:
+                    continue
+                else:
+                    self.cluster.func_2_warminfo[func][invoker] = frozenset()
+                    self.cluster.func_2_busyinfo[func][invoker] = frozenset()
+                    self.cluster.func_2_warminginfo[func][invoker] = frozenset()
+
     def UpdateClusterState(self, request: UpdateClusterStateRequest, context):
         # container set get entirely updated on each call (override)
         # NOTE, must make sure every related data structure is updated properly, must make sure every [func][invoker] pair is updated ???!!!
+        # NOTE, each invoker will have an entry, but not all the function registered will have an entry
         # ({funcStr:ActionState}, freeMem(MB))
         logging.info(f"Received state update RPC from OW controller, request: {request}")
+        touched_func_invoker_set: set[tuple[str, int]] = set()  # contain the func that has been touched by the update
         with self.cluster.cluster_state_lock:
             assert list(request.clusterState.actionStatePerInvoker.keys()).sort() == list(
                 self.cluster.id_2_invoker).sort(), "Invoker list from rpc update does not match record"
             for invoker_id, info in request.clusterState.actionStatePerInvoker.items():
                 invoker = self.cluster.id_2_invoker[invoker_id]
-                invoker.free_mem = info.freeMemoryMB  # atomic operation, no need of lock
+                invoker.free_mem = info.freeMemoryMB  # actually atomic operation, no need of lock
                 invoker.reset_core_pinning_count()  # reset core pinning info
                 for func_id_str, action_state in info.actionStates.items():
+                    touched_func_invoker_set.add((func_id_str, invoker_id))
                     # busy, warm,      [...str...]
                     for container_status, container_lst in action_state.stateLists.items():
                         core_pinned_list_list = []
@@ -60,8 +75,9 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                                 self.cluster.func_2_warminginfo[func_id_str][invoker] = frozenset(containers)
                             case _:
                                 assert False
-            self.cluster._update_invoker_state()
-        # prepare to update the routing server, NOTE, actually you need a lock if update freq is high
+            self._clear_stale_info(touched_func_invoker_set)  # clear stale entries
+            self.cluster.update_invoker_state()
+        # prepare to update the routing server, NOTE, actually you need a lock if update freq is high considering concurrent state update
         function_set = set().union(self.cluster.func_2_busyinfo.keys(), self.cluster.func_2_warminfo.keys(),
                                    self.cluster.func_2_warminfo.keys())
 
@@ -84,7 +100,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                 logging.error(f"Exception {e}")
         self.cluster.last_cluster_staste_update_time = time.time()
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
-        # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
+        logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
         self.cluster.first_update_arrival_event.set()  # mark there is at least one update
         return UpdateClusterStateResponse()
 
@@ -95,8 +111,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # No invoker has enough memory
         logging.info("Get routing cold start RPC request")
         func_str = request.func_str
-        with self.stats_update_lock:
-            self.cluster.stats.func_2_cold_start[func_str] += 1
+        self.cluster.stats.increase_cold_start_count(func_str)
         try:
             mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
         except KeyError:  # the function is not registered, should be a invokerHealthTestAction0
