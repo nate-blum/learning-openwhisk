@@ -24,8 +24,9 @@ Important Configuration Variables:
 - **Rethink invocation routing algorithm**
 - Config the PDU
 
-# TEST
+# TESTED
 - add single container
+- select core to pin based on core pin load given existing containers pinnings
 # TODO TEST:
 - auto cold start
 
@@ -33,3 +34,11 @@ Important Configuration Variables:
 - Simulator function selection is P95, reward is P99 <--> Real wsk all use p99
 - When select the active function, the usage of latency tail: only finished record, within a window <----> include both waiting
 and finished invocation
+# EXECUTION ORDER:
+Assuming cold-start only occurs when no free container, A, B... means different function container or request.
+1. Current Queue: `A->B->A`, what if currently a B container is ready/free? Would B get executed? Or only when A at head is dispatched can B be dispatched.
+   - E.g., Current Queue:`A->B->A`, invoker currently has one `A_busy` container and `B_free` container. Would B get executed event A is at the head.
+2. Current Queue: `A`, invoker currently has one `A_busy` container and one `B_free` container. Now a request of B arrives, would B get executed right away or
+buffered in the Queue
+3. Current Queue is `A`, invoker currently has one `A_busy` container, and now a request of B
+arrives, a cold start is supposed to happen for the B request, then the cold start begin. Would the request be buffered in queue or just waiting the warming container to dispatch to.
