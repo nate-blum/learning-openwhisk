@@ -336,14 +336,14 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             }
             if (!isResentFromBuffer) {
               // Add this request to the buffer, as it is not there yet.
-              runBuffer.update(r.action, runBuffer(r.action).enqueue(Run(r.action, r.msg, r.corePin, retryLogDeadline)))
+              runBuffer.update(r.action, runBuffer.getOrElseUpdate(r.action, immutable.Queue.empty).enqueue(Run(r.action, r.msg, r.corePin, retryLogDeadline)))
             }
           //buffered items will be processed via processBufferOrFeed()
         }
       } else {
         // There are currently actions waiting to be executed before this action gets executed.
         // These waiting actions were not able to free up enough memory.
-        runBuffer.update(r.action, runBuffer(r.action).enqueue(r))
+        runBuffer.update(r.action, runBuffer.getOrElseUpdate(r.action, immutable.Queue.empty).enqueue(r))
       }
 
     // Container is free to take more work
