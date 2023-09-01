@@ -219,8 +219,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 //      println(poolConfig)
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
       val isResentFromBuffer = runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).dequeueOption.exists(_._1.msg == r.msg)
-      if (isResentFromBuffer) logging.info(this, s"running buffered invocation: ${r.action.name.name}")
-      else logging.info(this, s"running new invocation: ${r.action.name.name}")
 
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
@@ -234,9 +232,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         val memory = r.action.limits.memory.megabytes.MB
 
         def coldStartContainer(isHealthTest: Boolean, containerState: String): Option[((ActorRef, ContainerData), String)] = {
-          logging.info(this, "cold start container")
           if (hasPoolSpaceFor(busyPool ++ freePool ++ prewarmedPool, prewarmStartingPool, warmingPool, memory, isHealthTest)) {
-            logging.info(this, "cold starting")
             val container = Some(createContainer(memory), containerState)
             incrementColdStartCount(kind, memory)
             container
@@ -286,7 +282,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
         createdContainer match {
           case Some(((actor, data), containerState)) =>
-            logging.info(this, "found container")
             //increment active count before storing in pool map
             val newData = data.nextRun(r)
             val container = newData.getContainer
@@ -440,7 +435,6 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */
   def processBufferOrFeed() = {
     runBuffer.foreach { buff =>
-      logging.info(this, s"resending ${buff._1}")
         // If buffer has more items, and head has not already been resent, send next one, otherwise get next from feed.
         buff._2.dequeueOption match {
           case Some((run, _)) => //run the first from buffer
