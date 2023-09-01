@@ -225,7 +225,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
       // It is guaranteed, that only the first message on the buffer is resent.
-      if (runBuffer.isEmpty || isResentFromBuffer) {
+      if (runBuffer.forall(_._2.isEmpty) || isResentFromBuffer) {
         if (isResentFromBuffer) {
           //remove from resent tracking - it may get resent again, or get processed
           resent.update(r.action.name.name, None)
@@ -349,6 +349,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         // There are currently actions waiting to be executed before this action gets executed.
         // These waiting actions were not able to free up enough memory.
         runBuffer.update(r.action.name.name, runBuffer.getOrElseUpdate(r.action.name.name, immutable.Queue.empty).enqueue(r))
+        processBufferOrFeed()
       }
 
     // Container is free to take more work
