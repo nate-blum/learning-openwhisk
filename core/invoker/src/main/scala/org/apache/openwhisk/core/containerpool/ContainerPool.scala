@@ -199,7 +199,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case PrintRunBuffer() =>
       logging.info(this, s"printing run buffer")
-      runBuffer.foreach(q => q._2.foreach(r => logging.info(this, r.action.name.name)))
+      runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
 
     case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")
@@ -219,6 +219,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 //      println(poolConfig)
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
       val isResentFromBuffer = runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).dequeueOption.exists(_._1.msg == r.msg)
+      if (isResentFromBuffer) logging.debug(this, s"resent run: ${r.action.name.name}")
+      else logging.debug(this, s"normal run: ${r.action.name.name}")
 
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
