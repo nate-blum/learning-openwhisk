@@ -46,12 +46,16 @@ class Test:
         # for invoker in self.cluster.id_2_invoker.values():
         #     invoker.rpc_reset_invoker()
         # <---------------Test start container--------------->
-        self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
-        self.cluster.take_action({1: data_structure.Action(container_delta=1,type='xe')})
-        while True:
-           time.sleep(10)
-        # self.cluster.update_activation_record()
-        # self.cluster.reset()
+        # self.cluster.take_action({0: data_structure.Action(container_delta=1,type='xs')})
+        # self.cluster.take_action({1: data_structure.Action(container_delta=1,type='xe')})
+        # while True:
+        #    time.sleep(10)
+        #self.cluster.update_activation_record()
+
+        self.cluster.reset()
+        for _ in range(10):
+            self.cluster.step(np.array([0, -1, 0, -1]))
+        self.cluster.reset()
         # # time.sleep(6) # after the invocation is done
         # n = 0
         # while n < 20:

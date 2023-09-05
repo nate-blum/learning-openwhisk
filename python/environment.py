@@ -137,14 +137,17 @@ class Invoker:
     def rpyc_get_container_stats(self) -> dict:
         return pickle.loads(self.py_runtime_client.root.get_container_utilization())
 
+    def rpyc_reset_container_util_collecting_runtime(self):
+        self.py_runtime_client.root.reset()
+
     def rpc_add_container(self, action_name: str, pinned_core: List[int]) -> None:
-        logging.info(f"Starting a new container for {action_name}, pin core: {pinned_core}")
+        # logging.info(f"Starting a new container for {action_name}, pin core: {pinned_core} on {self.id}")
         resp = self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name,
                                                                                     corePin=",".join(
                                                                                         [str(core) for core in
                                                                                          pinned_core]),
                                                                                     params={}))
-        logging.info(f"adding container res: {resp}")
+        # logging.info(f"adding container res: {resp}")
 
     def rpc_delete_container(self, container_id: str, func_name: str):
         # TODO, how the Success Response is determined from Scala runtime
@@ -370,7 +373,7 @@ class Cluster:
             subprocess.Popen(f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} "pkill -f stats_collect"',
                              shell=True).wait()
             p = subprocess.Popen(
-                f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} " nohup {INVOKER_PYTHON_PATH} {os.path.join(INVOKER_SOURCE_PATH, "python/invoker_runtime/stats_collect_server.py")} >nohup_ow.log  2>&1 &"',
+                f'sshpass -p {SSH_PASSWD} ssh {SSH_USER_NAME}@{host} " nohup {INVOKER_PYTHON_PATH} {os.path.join(INVOKER_SOURCE_PATH, "python/invoker_runtime/stats_collect_server.py")} >nohup_ow_{host}.log  2>&1 &"',
                 shell=True)
             (stdout, stderr) = p.communicate(timeout=10)
             if p.returncode != 0:
@@ -398,7 +401,7 @@ class Cluster:
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
         logging.info(f"invokers state: {self.id_2_invoker.values()}")
-        logging.info(f"func_2_busy: {self.func_2_busyinfo}")
+        # logging.info(f"func_2_busy: {self.func_2_busyinfo}")
 
     def pre_creation_container(self, func_id_list):
         for type_ in self.server_types:
@@ -408,15 +411,20 @@ class Cluster:
                 for func_id in func_id_list:
                     action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
                 self.take_action(action_mp)
+                logging.info(f"Pre-created container:funcid:{func_id} on type {type_}")
 
     def roll_out_stop(self):
         # called after the last step
         global_signal_queue.put(['reset', 0])  # the start call will reset the line pointer again
 
     def reset(self, seed=None, options=None):
+        logging.info(
+            f"---------------------------------------------------------Reset-------------------------------------------------------------")
         # NOTE, make sure relevant data structure is reset correctly
         for invoker in self.id_2_invoker.values():
             invoker.rpc_reset_invoker()  # reset the invoker: delete all containers
+        for invoker in self.id_2_invoker.values():
+            invoker.rpyc_reset_container_util_collecting_runtime()
         self.routing_stub.ResetRoutingServiceState(EmptyRequest())
         self.actionRealizeCounter.clear()
         self.func_2_invocation2Arrival.clear()
@@ -434,6 +442,7 @@ class Cluster:
                 workload_line_start += random.randint(0, 2000)
         self.first_update_arrival_event.clear()
         self.first_update_arrival_event.wait()
+        time.sleep(4) # wait the state to settle down
         global_signal_queue.put(["start", workload_line_start])
         obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda: defaultdict(list)))
         return obs, self.state_info
@@ -520,7 +529,8 @@ class Cluster:
             self.actionRealizeCounter.add_success += 1
             core_preference_lst = select_invoker.get_core_preference_list()
             select_invoker.rpc_add_container(action_name=func.name, pinned_core=core_preference_lst[0:func.cpu_req])
-            logging.info(f"Successfully create container for function {func.name}")
+            logging.info(
+                f"Create container for function {func.name}, corePinning {core_preference_lst[0:func.cpu_req]}, on invoker {select_invoker.id}")
         else:
             self.actionRealizeCounter.add_fail += 1
             logging.info(f"Fail to realize action of adding container for function {func.name}")
@@ -535,11 +545,14 @@ class Cluster:
                 self.delete_container_multiple_pinning(func_id_str=self.intId_2_funcStrName[funcid], type=action.type)
 
     def step(self, action: np.ndarray):
+        logging.info(
+            f"---------------------------------------------------------Step-------------------------------------------------------------")
         mapped_action: Dict[int, Action] = self._map_action(action)
         self.pdu.clear_samples()
         self.take_action(mapped_action)
         time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
         db_activations = self.update_activation_record()
+        activation_2_invoker:routing_pb2.GetRoutingResultDictResponse = self.routing_stub.GetRoutingResultDict(EmptyRequest())
         # contain queued,      not contain queued
         reward_dict, func_2_tail_latency, func_2_invoker2latencyList = compute_reward_using_overall_stat(
             db_activations=db_activations,
@@ -547,11 +560,12 @@ class Cluster:
             func_2_sla=self.func_2_sla,
             get_power=self.pdu.get_average_power,
             cluster_peak_pw=self.cluster_peak_pw,
-            latency_factor=RATIO_BASED_LATENCY_FACTOR)
+            latency_factor=RATIO_BASED_LATENCY_FACTOR,
+            activation_2_invoker=activation_2_invoker.res_dict)
         state = self.get_obs(func_2_tail_latency,
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
         logging.info(
-            f'[----------Reward----------->]\nReward:\n{reward_dict}\nfunc_2_tail_latency:\n{func_2_tail_latency}\nfun_2_type2LatencyList:\n{func_2_invoker2latencyList}')
+            f'[----------Reward----------->]\nReward:\n{reward_dict}\nfunc_2_tail_latency:\n{func_2_tail_latency}\nfun_2_invoker2LatencyList:\n{func_2_invoker2latencyList}')
         return state, reward_dict, False, False, self.state_info
 
     def get_execution_time(self, db_activations: list[dict]):
@@ -627,7 +641,7 @@ class Cluster:
     # TODO, validate the query latency is acceptable in training
     def update_activation_record(self) -> list[dict]:
         resp: routing_pb2.GetInvocationDictResponse = self.routing_stub.GetInvocationDict(routing_pb2.EmptyRequest())
-        logging.info(f"RPC respond from GetInvocationDict:\n{resp}")
+        logging.info(f"GetInvocationDict Result:\n{resp}")
         curr_time = round(time.time() * 1000)  # database time is in millisecond
         db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs']
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
@@ -741,8 +755,8 @@ class Cluster:
                     if not container_set:
                         continue
                     container_2_util = invk.rpyc_get_container_stats()
-                    logging.info(
-                        f"The docker utilization dict for func {func} on invoker id {invk.id}:\n{container_2_util}")
+                    # logging.info(
+                    #     f"The docker utilization dict for func {func} on invoker id {invk.id}:\n{container_2_util}")
                     for contr in container_set:
                         try:
                             utilization[invk.type].append(container_2_util[contr.id])
