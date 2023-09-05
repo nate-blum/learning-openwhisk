@@ -79,9 +79,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   // If all memory slots are occupied and if there is currently no container to be removed, than the actions will be
   // buffered here to keep order of computation.
   // Otherwise actions with small memory-limits could block actions with large memory limits.
-  var runBuffer = immutable.Queue.empty[Run]
+  var runBuffer = mutable.Map.empty[String, immutable.Queue[Run]]
   // Track the resent buffer head - so that we don't resend buffer head multiple times
-  var resent: Option[Run] = None
+  var resent = mutable.Map.empty[String, Option[Run]]
   val logMessageInterval = 10.seconds
   //periodically emit metrics (don't need to do this for each message!)
   context.system.scheduler.scheduleAtFixedRate(30.seconds, 10.seconds, self, EmitMetrics)
@@ -199,11 +199,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case PrintRunBuffer() =>
       logging.info(this, s"printing run buffer")
-      runBuffer.foreach(r => logging.info(this, s"${r.action.name.name}"))
+      runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
 
     case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")
-      runBuffer = immutable.Queue.empty
+      runBuffer = mutable.Map.empty
       (freePool ++ busyPool ++ prewarmedPool).map(c => (c._1, c._2.corePin)) ++
         prewarmStartingPool.map(c => (c._1, c._2._3)) ++
         warmingPool.map(c => (c._1, c._2._2)) foreach removeContainer
@@ -218,15 +218,15 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 //      logging.info(this, "pool config")
 //      println(poolConfig)
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
-      val isResentFromBuffer = runBuffer.nonEmpty && runBuffer.dequeueOption.exists(_._1.msg == r.msg)
+      val isResentFromBuffer = runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).dequeueOption.exists(_._1.msg == r.msg)
 
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
       // It is guaranteed, that only the first message on the buffer is resent.
-      if (runBuffer.isEmpty || isResentFromBuffer) {
+      if (runBuffer.forall(_._2.isEmpty) || isResentFromBuffer) {
         if (isResentFromBuffer) {
           //remove from resent tracking - it may get resent again, or get processed
-          resent = None
+          resent.update(r.action.name.name, None)
         }
         val kind = r.action.exec.kind
         val memory = r.action.limits.memory.megabytes.MB
@@ -307,8 +307,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             if (isResentFromBuffer) {
               // It is guaranteed that the currently executed messages is the head of the queue, if the message comes
               // from the buffer
-              val (_, newBuffer) = runBuffer.dequeue
-              runBuffer = newBuffer
+              val (_, newBuffer) = runBuffer(r.action.name.name).dequeue
+              runBuffer.update(r.action.name.name, newBuffer)
               // Try to process the next item in buffer (or get another message from feed, if buffer is now empty)
               processBufferOrFeed()
             }
@@ -336,14 +336,15 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             }
             if (!isResentFromBuffer) {
               // Add this request to the buffer, as it is not there yet.
-              runBuffer = runBuffer.enqueue(Run(r.action, r.msg, r.corePin, retryLogDeadline))
+              runBuffer.update(r.action.name.name, runBuffer.getOrElseUpdate(r.action.name.name, immutable.Queue.empty).enqueue(Run(r.action, r.msg, r.corePin, retryLogDeadline)))
             }
           //buffered items will be processed via processBufferOrFeed()
         }
       } else {
         // There are currently actions waiting to be executed before this action gets executed.
         // These waiting actions were not able to free up enough memory.
-        runBuffer = runBuffer.enqueue(r)
+        runBuffer.update(r.action.name.name, runBuffer.getOrElseUpdate(r.action.name.name, immutable.Queue.empty).enqueue(r))
+        processBufferOrFeed()
       }
 
     // Container is free to take more work
@@ -433,20 +434,22 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */
   def processBufferOrFeed() = {
-    // If buffer has more items, and head has not already been resent, send next one, otherwise get next from feed.
-    runBuffer.dequeueOption match {
-      case Some((run, _)) => //run the first from buffer
-        implicit val tid = run.msg.transid
-        //avoid sending dupes
-        if (resent.isEmpty) {
-          logging.info(this, s"re-processing from buffer (${runBuffer.length} items in buffer)")
-          resent = Some(run)
-          self ! run
-        } else {
-          //do not resend the buffer head multiple times (may reach this point from multiple messages, before the buffer head is re-processed)
+    runBuffer.foreach { buff =>
+        // If buffer has more items, and head has not already been resent, send next one, otherwise get next from feed.
+        buff._2.dequeueOption match {
+          case Some((run, _)) => //run the first from buffer
+            implicit val tid = run.msg.transid
+            //avoid sending dupes
+            if (resent.getOrElse(run.action.name.name, None).isEmpty) {
+              logging.info(this, s"re-processing from buffer (${buff._2.length} items in buffer)")
+              resent.update(run.action.name.name, Some(run))
+              self ! run
+            } else {
+              //do not resend the buffer head multiple times (may reach this point from multiple messages, before the buffer head is re-processed)
+            }
+          case None => //feed me!
+            feed ! MessageFeed.Processed
         }
-      case None => //feed me!
-        feed ! MessageFeed.Processed
     }
   }
 
@@ -622,7 +625,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_RUNBUFFER_COUNT, runBuffer.size)
     MetricEmitter.emitGaugeMetric(
       LoggingMarkers.CONTAINER_POOL_RUNBUFFER_SIZE,
-      runBuffer.map(_.action.limits.memory.megabytes).sum)
+      runBuffer.flatMap(_._2.map(_.action.limits.memory.megabytes)).sum)
     val containersInUse = freePool.filter(_._2.activeActivationCount > 0) ++ busyPool
     MetricEmitter.emitGaugeMetric(LoggingMarkers.CONTAINER_POOL_ACTIVE_COUNT, containersInUse.size)
     MetricEmitter.emitGaugeMetric(
