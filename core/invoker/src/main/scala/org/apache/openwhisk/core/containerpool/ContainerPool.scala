@@ -130,6 +130,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def changeCoreLoad(core: Either[Int, String], increment: Boolean) = {
+    logging.info(this, s"changeCoreLoad: core:${core}")
     val coreNum = core match { case Left(c) => c; case Right(c) => c.toInt }
     corePinStatus.update(coreNum, corePinStatus(coreNum) + (if (increment) 1 else -1))
   }
@@ -606,6 +607,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def actionStates(): (Map[ContainerListKey, Iterable[(String, String)]], Long) = {
+    //logging.info(this,"---->Collecting invoker state info")
     val actions: Set[String] = ((freePool ++ busyPool).map(_._2.asInstanceOf[ContainerInUse].action.name.name) ++ warmingPool.map(_._2._1.name.name)).toSet
     (actions.flatMap(actionState).toMap, freeMemoryMB())
   }
@@ -877,7 +879,7 @@ object ContainerPool {
     Props(new ContainerPool(factory, feed, prewarmConfig, poolConfig))
 
 }
-
+  
 /** Contains settings needed to perform container prewarming. */
 case class PrewarmingConfig(initialCount: Int,
                             exec: CodeExec[_],
