@@ -8,7 +8,7 @@ from training_configs import SLA_PERCENTAGE
 
 def compute_reward_using_overall_stat(db_activations: list, func_2_invocation2Arrival: dict[str, dict[str, int]],
                                       func_2_sla, get_power: Callable,
-                                      cluster_peak_pw: float, latency_factor: float) -> tuple[
+                                      cluster_peak_pw: float, latency_factor: float, activation_2_invoker: dict[str, int]) -> tuple[
     Dict[str, float], dict[str, float], defaultdict[str, defaultdict[int, list]]]:
     # pass a callable so that delay the computation of power as late as possible to collect as many records as possible
 
@@ -16,7 +16,7 @@ def compute_reward_using_overall_stat(db_activations: list, func_2_invocation2Ar
                     #  Contains Queued,  Not Contain Queued
     preserve_ratio, func_2_tail_latency, func_2_invoker2latencyList = compute_latency_reward_ratio_based_wsk(
         db_activations,
-        func_2_invocation2Arrival, func_2_sla)
+        func_2_invocation2Arrival, func_2_sla, activation_2_invoker)
     power_ratio = compute_cluster_power_ratio(total_pw=get_power(), cluster_peak=cluster_peak_pw)
     rewards['power'] = -power_ratio * (1 - latency_factor)
     rewards['sla'] = preserve_ratio * latency_factor
@@ -45,14 +45,15 @@ def _validate_FIFO_execution(func_2_invocation2Arrival: dict[str, dict[str, int]
                              _validation_early_arrival_db_record: defaultdict):
     for func, invo2Arrival in func_2_invocation2Arrival.items():
         for invo, arrival in invo2Arrival.items():
-            if round(arrival / 1_000_000) < _validation_early_arrival_db_record[func]:
+                # db has at least one record
+            if _validation_early_arrival_db_record[func]!= int(1e20) and round(arrival / 1_000_000) < _validation_early_arrival_db_record[func]:
                 logging.error(
                     f"Record with arrival time older than current older db arrival exist, probably indicating Not FIFO: "
                     f"time difference (millisecond): {_validation_early_arrival_db_record[func] - round(arrival / 1_000_000)}")
 
 
 def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocation2Arrival: dict[str, dict[str, int]],
-                                           func_2_sla) -> tuple[
+                                           func_2_sla, activation_2_invoker: dict[str, int]) -> tuple[
     float, dict[str, float], defaultdict[str, defaultdict[int, list]]]:
     func_2_invoker2Latency: defaultdict[str, defaultdict[int, list]] = defaultdict(
         lambda: defaultdict(list))
@@ -65,6 +66,7 @@ def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocati
         if activation['name'][:23] == 'invokerHealthTestAction':
             continue
         func_name = activation['name']  # TODO, make sure the function name is what has been registered
+        activation_id = activation['activationId']
         waitTime = None
         for item in activation['annotations']:
             if item['key'] == 'waitTime':
@@ -72,7 +74,11 @@ def compute_latency_reward_ratio_based_wsk(db_activations: list, func_2_invocati
                 break
         latency = activation['duration'] + waitTime  # in millisecond
         func_2_latencyList[func_name].append(latency)
-        func_2_invoker2Latency[func_name][activation['instanceId']].append(latency)
+        try:
+            func_2_invoker2Latency[func_name][activation['instanceId']].append(latency)
+        except KeyError:
+            func_2_invoker2Latency[func_name][activation_2_invoker[activation_id]].append(latency)
+            logging.warning(f"Missing instanceId info in db for: {activation_id} on {activation_2_invoker[activation_id]}")
         if activation['end'] - latency < _validation_early_arrival_db_record[func_name]:
             _validation_early_arrival_db_record[func_name] = activation['end'] - latency
         # remove the activation queried from database respond from local invocation dict

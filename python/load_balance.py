@@ -46,8 +46,10 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.func_2_invokerId: Dict[str, List[int]] = {}  # pair with the above
         self.func_2_containerCountSum: Dict[str, int] = {}  # {function: sumOfAllContainerInCluster}
         # ----------------------------------------------------------
+        self.routing_res_dict = {}
         self.lock_routing_info = Lock()
         self.lock_arrival_q = Lock()
+        self.lock_routing_res = Lock()
         self.func_2_activationDict: defaultdict[str, dict[str, int]] = defaultdict(
             dict)  # {func: {activationId, arrivalTime}]}
         # self.func_2_activationDict = {'hello1': {'invocation1': 1000, 'invocation2': 2000},
@@ -104,11 +106,13 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
         res: int = self._select_invoker_to_dispatch(func_id_str)
+        with self.lock_routing_res:
+            self.routing_res_dict[activation_id] = res
         logging.info(f"Decide routing to invoker =====> {res}")
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
-        #logging.info(f"Receive state update notification:|{request}|")
+        logging.info(f"Receive state update notification:|{request}|")
         with self.lock_routing_info:
             for func_id_str, container_counter in request.func_2_ContainerCounter.items():
                 self.func_2_containerSumList[func_id_str] = container_counter.count
@@ -127,7 +131,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             time.sleep(interval_sec)
 
     def GetArrivalInfo(self, request, context):
-        logging.info("Receive get arrival info RPC from main process")
+        #logging.info("Receive get arrival info RPC from main process")
         assert self.timer_update_arrival_info_thread.is_alive(), "Timer_update_arrival_info thread dead"  # periodic check
         # call by the agent to collect arrival info, this won't lock a lot of time as the background helper thread
         res_1s = {}
@@ -183,6 +187,14 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         with self.activation_dict_lock:
             self.func_2_activationDict.clear()
         return EmptyRequest()
+
+    def GetRoutingResultDict(self, request, context):
+        response = routing_pb2.GetRoutingResultDictResponse()
+        with self.lock_routing_res:
+            for activation_id, invoker in self.routing_res_dict.items():
+                response.res_dict[activation_id] = invoker
+        return response
+
 
 
 def start_rpc_routing_server_process(rpc_server_port: str, max_num_thread_rpc_server: int,

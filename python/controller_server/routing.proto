@@ -37,6 +37,8 @@ service RoutingService {
   rpc GetInvocationDict (EmptyRequest) returns (GetInvocationDictResponse) {}
 
   rpc ResetRoutingServiceState(EmptyRequest) returns (EmptyRequest) {}
+
+  rpc GetRoutingResultDict(EmptyRequest) returns (GetRoutingResultDictResponse) {}
 }
 
 message EmptyRequest {} // placeholder type for request
@@ -75,4 +77,8 @@ message GetInvocationDictResponse {
 message InvocationRecordList {
   repeated string invocationId = 1;
   repeated uint64 arrivalTime = 2;
+}
+
+message GetRoutingResultDictResponse {
+  map<string, int32> res_dict = 1;
 }

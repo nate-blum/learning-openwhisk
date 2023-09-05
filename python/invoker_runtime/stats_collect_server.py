@@ -32,6 +32,9 @@ class StatService(rpyc.Service):
             for line in self.sub_process.stdout:
                 line_arr = line.strip().split()
                 container_id = line_arr[0][7:] if line_arr[0][:7] =="\x1b[2J\x1b[H" else line_arr[0]
+                if len(line_arr) < 2:
+                    logging.error(f"Line array size  < 2, {line}")
+                    continue
                 t = time.time()
                 with self.update_lock:
                     if container_id not in self.container_2_utilization:
@@ -58,6 +61,10 @@ class StatService(rpyc.Service):
         with self.update_lock:
             #return pickle.dumps(self.container_2_utilization)
             return pickle.dumps({k:mean([i[0] for i in v]) for k, v in self.container_2_utilization.items()})
+
+    def exposed_reset(self):
+        with self.update_lock:
+            self.container_2_utilization.clear()
 
 
 def test_subprocess():
