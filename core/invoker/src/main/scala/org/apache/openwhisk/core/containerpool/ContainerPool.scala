@@ -224,7 +224,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
       // It is guaranteed, that only the first message on the buffer is resent.
-      if (runBuffer.forall(_._2.isEmpty) || isResentFromBuffer) {
+      if ((runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).isEmpty) || isResentFromBuffer) {
         if (isResentFromBuffer) {
           //remove from resent tracking - it may get resent again, or get processed
           resent.update(r.action.name.name, None)
