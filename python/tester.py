@@ -53,8 +53,9 @@ class Test:
         #self.cluster.update_activation_record()
 
         self.cluster.reset()
-        for _ in range(10):
-            self.cluster.step(np.array([0, -1, 0, -1]))
+        for i in range(10):
+            print(f"[==============================================Step {i}=======================================================")
+            self.cluster.step(np.array([1, -1, 1, -1]))
         self.cluster.reset()
         # # time.sleep(6) # after the invocation is done
         # n = 0

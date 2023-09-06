@@ -1,6 +1,5 @@
 import sys
 import os
-import pprint
 import threading
 
 import config_local
@@ -8,7 +7,7 @@ import rpyc
 import pickle
 from statistics import mean
 from collections import defaultdict
-from pprint import pprint
+from pprint import pprint, pformat
 
 sys.path.append('./invoker_client')
 sys.path.append('./controller_server')
@@ -312,10 +311,10 @@ class Cluster:
 
     def print_state(self):
         print("-----------------------------State Begin-----------------------------------------")
-        pprint.pp(self.id_2_invoker)
-        pprint.pprint(self.func_2_warminfo)
-        pprint.pprint(self.func_2_busyinfo)
-        pprint.pprint(self.func_2_warminginfo)
+        pprint(self.id_2_invoker)
+        pprint(self.func_2_warminfo)
+        pprint(self.func_2_busyinfo)
+        pprint(self.func_2_warminginfo)
         print("-----------------------------State End--------------------------------------------")
 
     def setup_logging(self):
@@ -411,7 +410,6 @@ class Cluster:
                 for func_id in func_id_list:
                     action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
                 self.take_action(action_mp)
-                logging.info(f"Pre-created container:funcid:{func_id} on type {type_}")
 
     def roll_out_stop(self):
         # called after the last step
@@ -442,7 +440,7 @@ class Cluster:
                 workload_line_start += random.randint(0, 2000)
         self.first_update_arrival_event.clear()
         self.first_update_arrival_event.wait()
-        time.sleep(4) # wait the state to settle down
+        time.sleep(6) # wait the state to settle down
         global_signal_queue.put(["start", workload_line_start])
         obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda: defaultdict(list)))
         return obs, self.state_info
@@ -538,6 +536,7 @@ class Cluster:
     # realize the action in the openwhisk system
     def take_action(self, mapped_action: Dict[int, Action]):
         # mapped_action: {id, Action}
+        logging.info(f'==============>Taking action:\n {pformat(mapped_action)}')
         for funcid, action in mapped_action.items():
             if action.container_delta > 0:  # add container
                 self.add_container_with_multiple_pinning(action, self.strId_2_funcs[self.intId_2_funcStrName[funcid]])
@@ -545,8 +544,8 @@ class Cluster:
                 self.delete_container_multiple_pinning(func_id_str=self.intId_2_funcStrName[funcid], type=action.type)
 
     def step(self, action: np.ndarray):
-        logging.info(
-            f"---------------------------------------------------------Step-------------------------------------------------------------")
+        # logging.info(
+        #     f"---------------------------------------------------------Step-------------------------------------------------------------")
         mapped_action: Dict[int, Action] = self._map_action(action)
         self.pdu.clear_samples()
         self.take_action(mapped_action)
@@ -650,7 +649,7 @@ class Cluster:
             for invocation, arrTime in zip(listRecord.invocationId, listRecord.arrivalTime):
                 assert invocation not in self.func_2_invocation2Arrival[func]
                 self.func_2_invocation2Arrival[func][invocation] = arrTime  # the time is in nanosecond
-        logging.info(f"Function_2_invocation2arrival:\n{self.func_2_invocation2Arrival}")
+        logging.info(f"====>Function_2_invocation2arrival:\n{self.func_2_invocation2Arrival}")
         logging.info(f"DB_activations:\n{db_activations}")
         return db_activations
 
@@ -660,6 +659,7 @@ class Cluster:
     def get_obs(self, func_2_tail_latency: dict[str, float],  # include queued
                 func_2_invoker2latencyList: defaultdict[str, defaultdict[int, list]]  # do not include queued
                 ):
+        _debug_dict_ = defaultdict(dict) # temporary data structure for debug printing
         func_2_type2latencyList: defaultdict[str, defaultdict[str, list]] = defaultdict(lambda: defaultdict(list))
         for func_name, invoker2LatencyList in func_2_invoker2latencyList.items():
             for invoker_id, latency_lst in invoker2LatencyList.items():
@@ -690,6 +690,9 @@ class Cluster:
                               self.stats.get_cold_start_count(func_str),
                               func_2_tail_latency[func_str]  # NOTE, rethink: new added, include all queueing jobs
                               ]
+            _debug_dict_[func_str]['cold_start_cnt'] = self.stats.get_cold_start_count(func_str)
+            _debug_dict_[func_str]['3s_req_count'] = arrival_info.query_count_3s[func_str]
+
             container_per_type_dict = self._state_get_num_container_per_type(func_str)
             for type_ in self.server_types:
                 type_tail_latency = np.percentile(func_2_type2latencyList[func_str][type_], 95) if \
@@ -699,15 +702,20 @@ class Cluster:
                 func_state_vec.append(container_per_type_dict[type_][1])  # warming count
                 func_state_vec.append(
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
-                func_state_vec.append(
-                    func_2_containerUtilization[func_str][type_] if func_str in func_2_containerUtilization and type_ in
-                                                                    func_2_containerUtilization[func_str] else 0)
+                container_util = func_2_containerUtilization[func_str][type_] if (func_str in func_2_containerUtilization and type_ in
+                                                                                  func_2_containerUtilization[func_str]) else 0
+                func_state_vec.append(container_util)
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
                     func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
+                _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}']=container_per_type_dict[type_][0] + container_per_type_dict[type_][2]
+                _debug_dict_[func_str][f'container_util_{type_}'] = container_util
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
+        print('[================================================================================================================================]')
+        pprint(_debug_dict_)
+        print('[================================================================================================================================]')
         if do_state_clip:
             return np.clip(nn_state, -state_clip_value, state_clip_value)
         else:
