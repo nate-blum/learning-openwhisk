@@ -173,7 +173,7 @@ class InvokerReactive(
   def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
     event match {
       case NewWarmedContainerEvent(actionName, namespace, corePin, params) =>
-//        logging.info(this, "new warmed container event")
+       logging.info(this, s"newWarmedContainerEvent,${corePin}")
         getExecutableAction(actionName, namespace)
           .flatMap(action =>
             action.toExecutableWhiskAction match {
@@ -199,6 +199,7 @@ class InvokerReactive(
             }
           )
       case _ =>
+        logging.error(this,"Unknow RPCEvent")
         pool ! event
         Future.successful(())
     }
