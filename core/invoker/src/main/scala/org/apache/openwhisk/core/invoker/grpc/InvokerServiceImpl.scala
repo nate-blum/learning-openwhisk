@@ -20,9 +20,9 @@ package org.apache.openwhisk.core.invoker.grpc
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
-import org.apache.openwhisk.grpc.{DeleteContainerWithIdRequest, DeleteRandomContainerRequest, EmptyRequest, GetBufferedInvocationsResponse, InvokerService, NewWarmedContainerRequest, ResetInvokerRequest, SetAllowOpenWhiskToFreeMemoryRequest, SuccessResponse}
+import org.apache.openwhisk.grpc.{DeleteContainerWithIdRequest, DeleteRandomContainerRequest, EmptyRequest, GetBufferedInvocationsResponse, InvokerService, NewWarmedContainerRequest, SetAllowOpenWhiskToFreeMemoryRequest, SuccessResponse}
 
-import scala.concurrent.{ExecutionContextExecutor, Future};
+import scala.concurrent.{ExecutionContextExecutor, Future}
 
 
 class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSystem, logging: Logging) extends InvokerService {
@@ -52,7 +52,7 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
     Future.successful(SuccessResponse(true))
   }
 
-  override def resetInvoker(request: ResetInvokerRequest): Future[SuccessResponse] = {
+  override def resetInvoker(request: EmptyRequest): Future[SuccessResponse] = {
     handleEvent(ResetInvokerEvent())
     Future.successful(SuccessResponse(true))
   }
