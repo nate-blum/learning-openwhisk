@@ -20,7 +20,7 @@ package org.apache.openwhisk.core.invoker.grpc
 import akka.actor.ActorSystem
 import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
-import org.apache.openwhisk.grpc.{DeleteContainerWithIdRequest, DeleteRandomContainerRequest, InvokerService, NewWarmedContainerRequest, ResetInvokerRequest, SetAllowOpenWhiskToFreeMemoryRequest, SuccessResponse}
+import org.apache.openwhisk.grpc.{DeleteContainerWithIdRequest, DeleteRandomContainerRequest, EmptyRequest, GetBufferedInvocationsResponse, InvokerService, NewWarmedContainerRequest, ResetInvokerRequest, SetAllowOpenWhiskToFreeMemoryRequest, SuccessResponse}
 
 import scala.concurrent.{ExecutionContextExecutor, Future};
 
@@ -56,6 +56,10 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
     handleEvent(ResetInvokerEvent())
     Future.successful(SuccessResponse(true))
   }
+
+  override def getBufferedInvocations(in: EmptyRequest): Future[GetBufferedInvocationsResponse] = {
+    handleEvent(GetBufferedInvocationsEvent()).map(_.asInstanceOf[GetBufferedInvocationsResponse])
+  }
 }
 
 object InvokerServiceImpl {
@@ -70,3 +74,4 @@ case class DeleteRandomContainerEvent(actionName: String, namespace: String) ext
 case class DeleteContainerWithIdEvent(containerId: String) extends InvokerRPCEvent
 case class SetAllowOpenWhiskToFreeMemoryEvent(setValue: Boolean) extends InvokerRPCEvent
 case class ResetInvokerEvent() extends InvokerRPCEvent
+case class GetBufferedInvocationsEvent() extends InvokerRPCEvent
