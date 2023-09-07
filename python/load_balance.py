@@ -97,8 +97,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
         func_id_str: str = request.actionName
         activation_id: str = request.activationId
+        logging.info(f"Received routing request, {func_id_str}, activationId: {activation_id}")
         assert "invokerHealthTestAction" != func_id_str[:23]
-        logging.info(f"Received routing request from OW controller, {func_id_str}, activationId: {activation_id}")
         # assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:
             t = time_ns()
@@ -108,11 +108,11 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         res: int = self._select_invoker_to_dispatch(func_id_str)
         with self.lock_routing_res:
             self.routing_res_dict[activation_id] = res
-        logging.info(f"Decide routing to invoker =====> {res}")
+        logging.info(f"routingRes for {activation_id} ==========> invoker {res}")
         return routing_pb2.GetInvocationRouteResponse(invokerInstanceId=res)
 
     def NotifyClusterInfo(self, request: routing_pb2.NotifyClusterInfoRequest, context):
-        logging.info(f"Receive state update notification:|{request}|")
+        #logging.info(f"Receive state update notification:|{request}|")
         with self.lock_routing_info:
             for func_id_str, container_counter in request.func_2_ContainerCounter.items():
                 self.func_2_containerSumList[func_id_str] = container_counter.count
@@ -186,6 +186,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             self.func_2_arrivalQueue.clear()
         with self.activation_dict_lock:
             self.func_2_activationDict.clear()
+        with self.lock_routing_res:
+            self.routing_res_dict.clear()
         return EmptyRequest()
 
     def GetRoutingResultDict(self, request, context):

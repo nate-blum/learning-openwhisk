@@ -34,7 +34,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # NOTE, must make sure every related data structure is updated properly, must make sure every [func][invoker] pair is updated ???!!!
         # NOTE, each invoker will have an entry, but not all the function registered will have an entry
         # ({funcStr:ActionState}, freeMem(MB))
-        #logging.info(f"Received state update RPC from OW controller, request: {request}")
+        # logging.info(f"Received state update RPC from OW controller, request: {request}")
         touched_func_invoker_set: set[tuple[str, int]] = set()  # contain the func that has been touched by the update
         with self.cluster.cluster_state_lock:
             assert list(request.clusterState.actionStatePerInvoker.keys()).sort() == list(
@@ -100,11 +100,12 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                 logging.error(f"Exception {e}")
         self.cluster.last_cluster_staste_update_time = time.time()
         resp = self.cluster.routing_stub.NotifyClusterInfo(func_2_ContainerCounter)
-        #logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
+        # logging.info(f"NotifyClusterInfo to routing process response:{resp.result_code}")
         self.cluster.first_update_arrival_event.set()  # mark there is at least one update
         return UpdateClusterStateResponse()
 
-    # NOTE, cold start is realized by routing to a specific invoker, which might not lead to a Real cold-start
+    # NOTE, cold start could be realized by just routing to a specific invoker and setting "enable_cold_start and other related configs"
+    # This function handle cold-start of container creation in this python runtime, by default OW runtime cold-start is disabled
     def GetRoutingColdStart(self, request: GetRoutingColdStartRequest, context):
         # get all invokers whose memory is enough and the type match default type, if exist find a proper one
         # get all invoker whose memory is enough, if exist find a proper one
@@ -115,7 +116,8 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         try:
             mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
         except KeyError:  # the function is not registered, should be a invokerHealthTestAction0
-            logging.warning(f"The function is not registered, {func_str}")
+            logging.error(f"The function is not registered, {func_str}")
+            assert False
             return GetRoutingColdStartResponse(invoker_selected=0)  # TODO, handle system action function
         with self.cluster.cluster_state_lock:
             invoker_meet_mem = [invoker for invoker in self.cluster.id_2_invoker.values() if invoker.free_mem > mem_req]
@@ -126,9 +128,14 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_of_default_type).id
                 else:
                     res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_meet_mem).id
-                logging.info(f"Decided to cold start on invoker {res_invoker}")
+                logging.info(f"Decided to cold start a container on invoker {res_invoker}")
             else:
-                # TODO, how to handle, how the invoker handle cold start when there is not enough resource
+                # when there is not enough resource, the default behavior is not free up memory of other function (could be configured by an RPC call)
                 res_invoker = 0
-                logging.info(f"Not enough resource, decided to cold start on invoker {res_invoker}")
+                logging.warning(f"Not enough resource, decided to cold start on invoker {res_invoker}")
+            invoker_obj = self.cluster.id_2_invoker[res_invoker]
+            core_preference_lst = invoker_obj.get_core_preference_list()
+
+        invoker_obj.rpc_add_container(action_name=func_str,
+                                      pinned_core=core_preference_lst[0:self.cluster.strId_2_funcs[func_str].cpu_req])
         return GetRoutingColdStartResponse(invoker_selected=res_invoker)
