@@ -33,7 +33,7 @@ service InvokerService {
 
   rpc SetAllowOpenWhiskToFreeMemory (SetAllowOpenWhiskToFreeMemoryRequest) returns (SuccessResponse) {}
 
-  rpc ResetInvoker (ResetInvokerRequest) returns (SuccessResponse) {}
+  rpc ResetInvoker (EmptyRequest) returns (SuccessResponse) {}
 
   rpc GetBufferedInvocations (EmptyRequest) returns (GetBufferedInvocationsResponse) {}
 }
@@ -43,8 +43,6 @@ message EmptyRequest {}
 message SuccessResponse {
   bool success = 1;
 }
-
-message ResetInvokerRequest {}
 
 // currently supported params:
 // pin -> core pin string
