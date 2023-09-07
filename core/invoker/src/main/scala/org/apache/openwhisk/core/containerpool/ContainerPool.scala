@@ -204,7 +204,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
 
     case GetBufferedInvocationsEvent() =>
-      GetBufferedInvocationsResponse(runBuffer.map(
+      sender() ! GetBufferedInvocationsResponse(runBuffer.map(
         buffer =>
           buffer._1 -> BufferedInvocationsPerFunction(buffer._2.map(_.msg.activationId.toString))
       ).toMap)
