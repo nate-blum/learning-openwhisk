@@ -24,7 +24,8 @@ import org.apache.openwhisk.core.containerpool.ContainerPool.someContainerMatche
 import org.apache.openwhisk.core.entity.ExecManifest.ReactivePrewarmingConfig
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.entity.size._
-import org.apache.openwhisk.core.invoker.grpc.{DeleteContainerWithIdEvent, ResetInvokerEvent, SetAllowOpenWhiskToFreeMemoryEvent}
+import org.apache.openwhisk.core.invoker.grpc.{DeleteContainerWithIdEvent, GetBufferedInvocationsEvent, ResetInvokerEvent, SetAllowOpenWhiskToFreeMemoryEvent}
+import org.apache.openwhisk.grpc.{BufferedInvocationsPerFunction, GetBufferedInvocationsResponse}
 
 import scala.annotation.tailrec
 import scala.collection.{immutable, mutable}
@@ -130,7 +131,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def changeCoreLoad(core: Either[Int, String], increment: Boolean) = {
-    logging.info(this, s"changeCoreLoad: core:${core}")
+//    logging.info(this, s"changeCoreLoad: core:${core}")
     val coreNum = core match { case Left(c) => c; case Right(c) => c.toInt }
     corePinStatus.update(coreNum, corePinStatus(coreNum) + (if (increment) 1 else -1))
   }
@@ -201,6 +202,12 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     case PrintRunBuffer() =>
       logging.info(this, s"printing run buffer")
       runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
+
+    case GetBufferedInvocationsEvent() =>
+      sender() ! GetBufferedInvocationsResponse(runBuffer.map(
+        buffer =>
+          buffer._1 -> BufferedInvocationsPerFunction(buffer._2.map(_.msg.activationId.toString))
+      ).toMap)
 
     case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")

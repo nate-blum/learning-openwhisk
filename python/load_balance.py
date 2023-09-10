@@ -97,7 +97,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
         func_id_str: str = request.actionName
         activation_id: str = request.activationId
-        logging.info(f"Received routing request, {func_id_str}, activationId: {activation_id}")
+        logging.info(f"Received request --->{func_id_str}<---, activationId: {activation_id}")
         assert "invokerHealthTestAction" != func_id_str[:23]
         # assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:
@@ -190,6 +190,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
             self.routing_res_dict.clear()
         return EmptyRequest()
 
+    #TODO, could instead use an incremental way
     def GetRoutingResultDict(self, request, context):
         response = routing_pb2.GetRoutingResultDictResponse()
         with self.lock_routing_res:

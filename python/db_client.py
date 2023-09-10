@@ -48,6 +48,7 @@ class CouchDB_Py:
         res = self.db.find(mango_query=body)
         return res
 
+
 class DB:
     DB_CONFIG_FILE = config_local.db_config_file  #
 
@@ -108,9 +109,51 @@ class DB:
                                                    auth=(self.configs['db_username'], self.configs['db_password']))
 
         return respond.json()
-        #return json.loads(respond.content)
-        #print(json.loads(respond.content), respond.status_code)
+        # return json.loads(respond.content)
+        # print(json.loads(respond.content), respond.status_code)
 
+    def GetActivationRecordsSinceStart(self, since, limit=100000):
+        """
+        Returns details on activation records since a given tick in milliseconds
+        """
+        headers = {
+            'Content-Type': 'application/json',
+        }
+        body = {
+            "selector": {
+                {"start":
+                     {"$gte": since}
+                 }
+            },
+            "limit": limit
+        }
+
+        respond: requests.Response = requests.post(self.url_find, json=body, headers=headers,
+                                                   auth=(self.configs['db_username'], self.configs['db_password']))
+
+        return respond.json()
+        # return json.loads(respond.content)
+        # print(json.loads(respond.content), respond.status_code)
+
+    def GetActivationRecordsEndTimeSinceUntil(self, since, end, limit=100000):
+        # query based on end time
+        headers = {
+            'Content-Type': 'application/json',
+        }
+        body = {
+            "selector": {
+                "$and": [
+                    {"end": {"$gt": since}},
+                    {"end": {"$lte": end}}
+                ]
+            },
+            "limit": limit
+        }
+
+        respond: requests.Response = requests.post(self.url_find, json=body, headers=headers,
+                                                   auth=(self.configs['db_username'], self.configs['db_password']))
+
+        return respond.json()
 
 if __name__ == '__main__':
     import time
@@ -118,10 +161,9 @@ if __name__ == '__main__':
     db = DB()
     db_python = CouchDB_Py()
     t = time.time()
-    res = db.GetActivationRecordsSince((int(time.time()) - 3600*24*10) * 1000, int(time.time()) * 1000)
-    #res = db_python.find((int(time.time()) - 3600 * 24 * 10) * 1000, 100000)
-    print(type(res))
+    res = db.GetActivationRecordsSince((int(time.time()) - 3600 * 10) * 1000, int(time.time()) * 1000)
+    # res = db_python.find((int(time.time()) - 3600 * 24 * 10) * 1000, 100000)
+    #print(type(res))
     for record in res['docs']:
-        for k , v in record.items():
-            print(k, "---", v)
+            print(record)
     print(time.time() - t)
