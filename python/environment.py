@@ -72,7 +72,7 @@ SELECT_FUNC_LATENCY_SLACK_WEIGHT = training_configs.select_func_weight['latency_
 do_state_clip: bool = training_configs.NN['state_clip']
 state_clip_value = 2000
 PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
-PDU_OUTLET_LST = [21, 22]
+PDU_OUTLET_LST = [11, 23, 24] # cloud-06 11, xe3nv 23, 24
 PDU_SAMPLE_INTERVAL = 0.4
 WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
 WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
@@ -411,7 +411,10 @@ class Cluster:
                 # {func_num_id: Action}
                 action_mp: dict[int, Action] = {}
                 for func_id in func_id_list:
-                    action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
+                    if type_ == 'xe':
+                        action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
+                    else:
+                        action_mp[func_id] = Action(container_delta=0, freq=3000, type=type_, target_load=1.0)
                 self.take_action(action_mp)
 
     def roll_out_stop(self):
@@ -433,7 +436,7 @@ class Cluster:
         self.actionRealizeCounter.clear()
         self.func_2_invocation2Arrival.clear()
         self.stats.reset_coldstart()  # reset cold start count, in lock
-        time.sleep(2)
+        time.sleep(3) # wait the state of container to settle
         self.active_func_ids = self.all_func_ids[:self.nn_func_input_count]
         if MORE_THAN_2_FUNC:
             self.pre_creation_container(self.all_func_ids)
@@ -651,8 +654,9 @@ class Cluster:
         resp: routing_pb2.GetInvocationDictResponse = self.routing_stub.GetInvocationDict(routing_pb2.EmptyRequest())
         #logging.info(f"GetInvocationDict Result:\n{resp}")
         curr_time = round(time.time() * 1000)  # database time is in millisecond
+        #NOTE, it is import the db query happen before local activation record update
         db_activations = self.db.GetActivationRecordsEndTimeSinceUntil(since=self.last_query_db_since - 1000, end=curr_time)['docs']
-        #db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG [......] could miss record whose start time is within last window but finished in the current window
+        #db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG  could miss record whose start time is within last window but finished in the current window
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
         # update the local invocation dict based on rpc result
         for func, listRecord in resp.func2_invocationRecordList.items():
@@ -823,8 +827,9 @@ if __name__ == "__main__":
 
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
-    t = tester.Test(cluster)
-    t.test_create_container_issue_requests()
+    cluster.id_2_invoker[1].rpc_reset_invoker()
+    # t = tester.Test(cluster)
+    # t.test_create_container_issue_requests()
     # pprint(cluster.func_2_invocation2Arrival)
 
     # cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
