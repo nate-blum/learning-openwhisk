@@ -298,7 +298,7 @@ class ContainerProxy(factory: (TransactionId,
         job.exec.pull,
         job.memoryLimit,
         poolConfig.cpuShare(job.memoryLimit),
-        Map("--cpuset-cpus" -> Set(job.corePin)),
+        if (job.corePin.trim.isEmpty) Map.empty else Map("--cpuset-cpus" -> Set(job.corePin)),
         None)
         .map(container =>
           PreWarmCompleted(PreWarmedData(container, job.exec.kind, job.memoryLimit, corePin = job.corePin, expires = job.ttl.map(_.fromNow))))
@@ -320,7 +320,7 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.pull,
         memory,
         poolConfig.cpuShare(memory),
-        job.params + ("--cpuset-cpus" -> Set(job.corePin)),
+        job.params + (if (job.corePin.trim.isEmpty) Map.empty else Map("--cpuset-cpus" -> Set(job.corePin))),
         None)
         .map(container =>
           Warm(container, job.action, job.corePin, job.params, job.transid))
@@ -340,7 +340,7 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.pull,
         job.action.limits.memory.megabytes.MB,
         poolConfig.cpuShare(job.action.limits.memory.megabytes.MB),
-        Map("--cpuset-cpus" -> Set(job.corePin)),
+        if (job.corePin.trim.isEmpty) Map.empty else Map("--cpuset-cpus" -> Set(job.corePin)),
         Some(job.action))
 
       // container factory will either yield a new container ready to execute the action, or
