@@ -186,7 +186,7 @@ class InvokerReactive(
               }
           )
       case DeleteRandomContainerEvent(actionName, namespace) =>
-//        logging.info(this, "delete warmed container event")
+        logging.info(this, "delete warmed container event")
         getExecutableAction(actionName, namespace)
           .flatMap(action =>
             action.toExecutableWhiskAction match {
@@ -202,7 +202,7 @@ class InvokerReactive(
         implicit val timeout: Timeout = 10.seconds
         pool ? e
       case _ =>
-//        logging.error(this,"Unknow RPCEvent")
+        logging.info(this,"RPCEvent Forwarded to Container Pool Directly")
         pool ! event
         Future.successful(())
     }

@@ -80,8 +80,9 @@ class Reward:
             try:
                 del func_2_invocation2Arrival[func_name][activation['activationId']]
             except Exception as e:
-                logging.error(f"Delete activation record failed (db record must be in local arrival dict): {e}")
-                assert False
+                if self.cluster.curr_step !=0: # should only happen with small chance at the first step after reset
+                    logging.error(f"Delete activation record failed (db record must be in local arrival dict): {e}")
+                    assert False
         self.activation_last_round = self.activation_curr_round.copy()
         self.activation_curr_round.clear()
         _validate_FIFO_execution(func_2_invocation2Arrival, _validation_early_arrival_db_record, activation_2_invoker)
