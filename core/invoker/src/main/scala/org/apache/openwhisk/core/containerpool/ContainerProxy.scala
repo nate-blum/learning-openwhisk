@@ -320,7 +320,8 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.pull,
         memory,
         poolConfig.cpuShare(memory),
-        job.params + (if (job.corePin.trim.isEmpty) Map.empty else Map("--cpuset-cpus" -> Set(job.corePin))),
+        //job.params + (if (job.corePin.trim.isEmpty) Map.empty else Map("--cpuset-cpus" -> Set(job.corePin))),
+        if (job.corePin.trim.nonEmpty)  job.params + ("--cpuset-cpus" -> Set(job.corePin)) else job.params,
         None)
         .map(container =>
           Warm(container, job.action, job.corePin, job.params, job.transid))
