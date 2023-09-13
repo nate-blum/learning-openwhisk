@@ -141,10 +141,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       case Some(pin) if pin.trim.nonEmpty =>
         pin.split(",") foreach (core => changeCoreLoad(Right(core), true))
         pin
-      case _ =>
+      case None =>
         val core = corePinStatus.minBy(_._2)._1
         changeCoreLoad(Left(core), true)
         core.toString
+      case _ => ""
     }
   }
 
