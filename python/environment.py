@@ -252,7 +252,7 @@ class Cluster:
         self.most_recent_killed_container_cache: dict[int, Deque[str]] = None
 
         self.cluster_spec_dict: dict = cluster_spec_dict
-        self.server_type_lst = list(cluster_spec_dict.keys())
+        #self.server_type_lst = list(cluster_spec_dict.keys())
         self.server_types = []
         self.serverType_2_index: dict[str, int] = {}
         self.func_spec_dict = func_spec_dict
@@ -273,6 +273,7 @@ class Cluster:
         self.state_info = None
         self.invocation_store = InvocationStore()
         self.reward = Reward(self)
+        self.curr_step = 0
 
         # TODO, what if the server is not up, but the rpc request has been sent ?
         # -------------------Start Load Balancer process and the rpc server-----------------------------
@@ -422,9 +423,14 @@ class Cluster:
         global_signal_queue.put(['reset', 0])  # the start call will reset the line pointer again
 
     def terminate_trajectory(self):
-        ...
-        #TODO, stop workload
+        # stop workload
+        # ---------LastStep--------StopWorkload-------Reward-----Reset--->
+        global_signal_queue.put(["reset", 0])
+
     def reset(self, seed=None, options=None):
+        self.curr_step = 0
+        time.sleep(1) # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
+        # a last step invocation get db recorded and is queried at the next first time step
         logging.info(
             f"---------------------------------------------------------Reset-------------------------------------------------------------")
         # NOTE, make sure relevant data structure is reset correctly
@@ -450,12 +456,12 @@ class Cluster:
                 workload_line_start += random.randint(0, 2000)
         self.first_update_arrival_event.clear()
         self.first_update_arrival_event.wait()
-        time.sleep(6)  # wait the state to settle down
+        time.sleep(6)  # wait the state to settle down, primarily container utilization
         global_signal_queue.put(["start", workload_line_start])
         obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda: defaultdict(list)))
         return obs, self.state_info
 
-    def _map_action(self, simple_action: np.ndarray) -> Dict[int, Action]:
+    def map_action(self, simple_action: np.ndarray) -> Dict[int, Action]:
         # the output is sample from Normal distribution, they should be mapped as real control operation
         # adding default sub-action to the simple action
         action_cpp = {}
@@ -553,16 +559,18 @@ class Cluster:
             elif action.container_delta < 0:
                 self.delete_container_multiple_pinning(func_id_str=self.intId_2_funcStrName[funcid], type=action.type)
 
-    def step(self, action: np.ndarray):
+    def step(self, action: np.ndarray, is_last = False):
         # logging.info(
         #     f"---------------------------------------------------------Step-------------------------------------------------------------")
-        mapped_action: Dict[int, Action] = self._map_action(action)
+        mapped_action: Dict[int, Action] = self.map_action(action)
         self.pdu.clear_samples()
         self.take_action(mapped_action)
         time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
         db_activations = self.update_activation_record()
         activation_2_invoker: routing_pb2.GetRoutingResultDictResponse = self.routing_stub.GetRoutingResultDict(
             EmptyRequest())
+        if is_last: # if it is the last step, stop the workload
+            self.terminate_trajectory()
         # contain queued,      not contain queued
         reward_dict, func_2_tail_latency, func_2_invoker2latencyList = self.reward.compute_reward_using_overall_stat(
             db_activations=db_activations,
@@ -577,6 +585,7 @@ class Cluster:
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
         logging.info(
             f'[----------Reward----------->]\nReward:\n{reward_dict}\nfunc_2_tail_latency (contain queued):\n{func_2_tail_latency}\nfun_2_invoker2LatencyList (not containing queued):\n{func_2_invoker2latencyList}')
+        self.curr_step +=1
         return state, reward_dict, False, False, self.state_info
 
     def get_execution_time(self, db_activations: list[dict]):
@@ -687,7 +696,7 @@ class Cluster:
         select_func: list[str] = self.select_from_all_state(arrival_info.func_2_arrivalEma,
                                                             func_2_tail_latency)  # the parameter might be changed
         # Some (func, type) pair might not be in the default dict
-        func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func)
+        #func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func)
         nn_state = []
         cluster_state = []  # not tired to a specific function
         core_avg_pinned: list[
@@ -717,16 +726,16 @@ class Cluster:
                 func_state_vec.append(container_per_type_dict[type_][1])  # warming count
                 func_state_vec.append(
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
-                container_util = func_2_containerUtilization[func_str][type_] if (
-                            func_str in func_2_containerUtilization and type_ in
-                            func_2_containerUtilization[func_str]) else 0
-                func_state_vec.append(container_util)
+                # container_util = func_2_containerUtilization[func_str][type_] if (
+                #             func_str in func_2_containerUtilization and type_ in
+                #             func_2_containerUtilization[func_str]) else 0
+                # func_state_vec.append(container_util)
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
                     func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
                 _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}'] = container_per_type_dict[type_][0] + \
                                                                             container_per_type_dict[type_][2]
-                _debug_dict_[func_str][f'container_util_{type_}'] = container_util
+                #_debug_dict_[func_str][f'container_util_{type_}'] = container_util
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
@@ -827,9 +836,10 @@ if __name__ == "__main__":
 
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
-    cluster.id_2_invoker[1].rpc_reset_invoker()
-    # t = tester.Test(cluster)
-    # t.test_create_container_issue_requests()
+    #cluster.id_2_invoker[1].rpc_add_container('func1', [0])
+    #cluster.id_2_invoker[1].rpc_reset_invoker()
+    t = tester.Test(cluster)
+    t.test_create_container_issue_requests()
     # pprint(cluster.func_2_invocation2Arrival)
 
     # cluster.id_2_invoker[0].rpc_add_container("helloPython", [0, 1])
