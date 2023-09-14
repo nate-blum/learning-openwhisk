@@ -19,12 +19,16 @@ class InvocationStore:
         # self.func_2_invk2invocationDict: defaultdict[str, defaultdict[int, dict[str, Invocation]]] = defaultdict(
         #     lambda: defaultdict(dict))
         self.invocationid_2_invocation: dict[str, Invocation] = {}
+    def reset(self):
+        self.invocationid_2_invocation.clear()
 
     def init_invocation(self, invocation_id, arrival_time, func):
         obj = Invocation(invocation_id, round(arrival_time/1_000_000), func)
         # self.func_2_invk2invocationDict[func][invoker_id][invocation_id] = obj
         self.invocationid_2_invocation[invocation_id] = obj
 
+    def is_in_store(self, activation_id:str):
+        return activation_id in self.invocationid_2_invocation
     def set_finish_time(self, invocation_id, finish_time, invoker):
         self.invocationid_2_invocation[invocation_id].finish_time = finish_time
         self.invocationid_2_invocation[invocation_id].routed_invoker = invoker

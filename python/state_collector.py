@@ -9,12 +9,12 @@ from controller_server.clusterstate_pb2 import UpdateClusterStateRequest, Update
     GetRoutingColdStartResponse
 
 from threading import Lock
-import environment as env
+from common import Container
 
 
 class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer):
-    def __init__(self, cluster: env.Cluster):
-        self.cluster: env.Cluster = cluster
+    def __init__(self, cluster):
+        self.cluster = cluster
         self.stats_update_lock = Lock()
         self.warming_dummy_id = 0
 
@@ -57,7 +57,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                             finally:
                                 core_pinned_list_list.append(pin_lst)
                         containers = [
-                            env.Container(container.id, pin_lst_, invoker) for container, pin_lst_ in
+                            Container(container.id, pin_lst_, invoker) for container, pin_lst_ in
                             # NOTE, id might be empty str, but its okay as agent won't delete a warming container
                             zip(container_lst.containers, core_pinned_list_list)]
                         # update core pinning count

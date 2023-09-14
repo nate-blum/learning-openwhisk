@@ -161,7 +161,7 @@ if __name__ == '__main__':
     db = DB()
     db_python = CouchDB_Py()
     t = time.time()
-    res = db.GetActivationRecordsSince((int(time.time()) - 3600 * 10) * 1000, int(time.time()) * 1000)
+    res = db.GetActivationRecordsSince((int(time.time()) - 3600 * 50*10) * 1000, int(time.time()) * 1000)
     # res = db_python.find((int(time.time()) - 3600 * 24 * 10) * 1000, 100000)
     #print(type(res))
     for record in res['docs']:

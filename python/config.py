@@ -1,5 +1,5 @@
 CONFIG_NOTE = "realWsk"
-cluster_state_name = 'cluster_state'
+#cluster_state_name = 'cluster_state'
 server_power_specs = {
     'xs': {'static': 20, 'peak': 100, 'num_core': 16},
     'xe': {'static': 20, 'peak': 130, 'num_core': 8}
@@ -75,7 +75,7 @@ func_spec_dict = {
 
 # NOTE, this must match the get_obs method in the environment
 input_space_spec = {
-    'func_state_dim': 5 + 5 * len(cluster_spec_dict),
+    'func_state_dim': 6 + 4 * len(cluster_spec_dict),
     'cluster_state_dim': 1 * len(cluster_spec_dict),
     'n_func': 2  # active function
 }

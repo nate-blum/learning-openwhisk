@@ -1,10 +1,8 @@
 import sys
 import os
 import threading
-
 import config_local
 import rpyc
-import pickle
 from statistics import mean
 from collections import defaultdict
 from pprint import pprint, pformat
@@ -17,7 +15,6 @@ import time
 import subprocess
 from typing import Dict, Tuple, List, Deque, NamedTuple, Union, Optional, Set, Final
 from collections.abc import Iterable
-from operator import itemgetter
 import grpc
 import numpy as np
 from multiprocessing import Process, Queue
@@ -26,9 +23,7 @@ from threading import Lock
 from collections import deque
 from itertools import chain
 from bisect import bisect
-from invoker_client import invoker_pb2 as invoker_types
-from invoker_client.invoker_pb2 import DeleteContainerWithIdRequest, SuccessResponse, ResetInvokerRequest
-from invoker_client import invoker_pb2_grpc as invoker_service
+
 from controller_server import clusterstate_pb2, clusterstate_pb2_grpc, routing_pb2_grpc, routing_pb2
 from controller_server.routing_pb2 import EmptyRequest
 from data_structure import LatencyInfo, RoutingResult, Action, ActionRealizeCounter
@@ -41,11 +36,12 @@ import training_configs  # training config
 import config  # cluster environment config
 import auth
 from load_balance import start_rpc_routing_server_process
-import state_collector
 from power import PDU_reader
 from workload_generator import start_workload_process
 from db_client import DB
 from  invocation_store import Invocation, InvocationStore
+import state_collector
+from common import Invoker,Container,Func
 
 global_signal_queue = Queue()  # sending signal to control workload generator's reset/start
 SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
@@ -64,7 +60,7 @@ RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
 DEFAULT_SERVER_TYPE = config.default_svr_type
 ARRIVAL_Q_TIMER_INTERVAL_SEC = 0.2
 ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9)  # 120second, 2 minute, in nanosecond
-EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond
+EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond #NOTE, rethink the interval
 ARRIVAL_EMA_BUCKET_NSEC = 2_000_000_000  # 2 second in nanosecond
 ARRIVAL_EMA_COEFF = 0.4
 SELECT_FUNC_ARRIVAL_EMA_WEIGHT = training_configs.select_func_weight['arrival_delta']
@@ -86,126 +82,6 @@ INIT_WARM_CONTAINER_COUNT_PER_TYPE = training_configs.initialize_env['warm_cnt_p
 # ---
 MORE_THAN_2_FUNC = training_configs.select_func_params['more_than_2_funcs']
 
-
-class Core:
-    def __init__(self, id, max_freq, min_freq, desired_freq):
-        self.id: int = id
-        self.num_pinned_container: int = 0
-        self.max_freq: int = max_freq
-        self.min_freq: int = min_freq
-        self.desired_freq: int = desired_freq
-
-    def __str__(self):
-        return f"NP:{self.num_pinned_container}"
-
-
-class Invoker:
-    RPC_PORT = "50051"
-
-    def __init__(self, id, host, type, mem_capacity, num_cores, core_spec_dict: Dict[int, Dict],
-                 max_pinned_container_per_core: int) -> None:
-        self.id: int = id
-        self.hostname: str = host
-        self.type: str = type
-        self.mem_capacity: int = mem_capacity
-        self.free_mem: int = mem_capacity
-        self.num_cores = num_cores
-        self.num_warm_container = 0
-        self.num_busy_container = 0
-        self.num_warming_container = 0
-        self.last_utilization_record = 0  # most recent utilization record
-        self.MAX_PINNED_CONTAINER_PER_CORE: Final[int] = max_pinned_container_per_core
-        self.id_2_core: Dict[int, Core] = {}
-        for id, spec in core_spec_dict.items():
-            self.id_2_core[id] = Core(**spec)
-
-        # -------------rpc channel-----------------
-        self.channel = grpc.insecure_channel(f"{self.hostname}:{self.RPC_PORT}")
-        self.stub = invoker_service.InvokerServiceStub(channel=self.channel)
-        # -------------------------------------------
-        self.py_runtime_client = None
-
-    def __str__(self) -> str:
-        core_str = "_".join([core.__str__() for core in self.id_2_core.values()])
-        return (
-            f"id:{self.id},type:{self.type},num_container:[w{self.num_warm_container}b{self.num_busy_container}wi{self.num_warming_container}] [{core_str}]")
-
-    def __repr__(self) -> str:
-        return self.__str__()
-
-    def rpyc_get_container_stats(self) -> dict:
-        return pickle.loads(self.py_runtime_client.root.get_container_utilization())
-
-    def rpyc_reset_container_util_collecting_runtime(self):
-        self.py_runtime_client.root.reset()
-
-    def rpc_add_container(self, action_name: str, pinned_core: List[int]) -> None:
-        # logging.info(f"Starting a new container for {action_name}, pin core: {pinned_core} on {self.id}")
-        resp = self.stub.NewWarmedContainer(invoker_types.NewWarmedContainerRequest(actionName=action_name,
-                                                                                    corePin=",".join(
-                                                                                        [str(core) for core in
-                                                                                         pinned_core]),
-                                                                                    params={}))
-        # logging.info(f"adding container res: {resp}")
-
-    def rpc_delete_container(self, container_id: str, func_name: str):
-        # TODO, how the Success Response is determined from Scala runtime
-        response: SuccessResponse = self.stub.DeleteContainerWithId(
-            DeleteContainerWithIdRequest(containerId=container_id))
-
-    def rpc_reset_invoker(self):
-        res = self.stub.ResetInvoker(ResetInvokerRequest())
-        logging.info(f"Resetting the invoker: {self.id}")
-        return res
-
-    def is_all_core_pinned_to_uplimit(self):
-        res = True
-        for core in self.id_2_core.values():
-            if core.num_pinned_container < self.MAX_PINNED_CONTAINER_PER_CORE:
-                res = False
-                break
-        return res
-
-    def get_total_num_container(self):
-        return self.num_warm_container + self.num_busy_container + self.num_warming_container
-
-    def get_core_preference_list(self):
-        core_idxs = list(range(self.num_cores))
-        core_idxs.sort(key=lambda idx: self.id_2_core[idx].num_pinned_container)  # ascending order
-        return core_idxs
-
-    def reset_core_pinning_count(self):
-        for core in self.id_2_core.values():
-            core.num_pinned_container = 0
-
-    def get_total_core_pinning_count(self):
-        # NOTE, this is different than the total number of container on this invoker,
-        #  as a container can take up more than one core. This measure how busy the core is on average
-        total = 0
-        for core in self.id_2_core.values():
-            total += core.num_pinned_container
-        return total
-
-
-class Container:
-    def __init__(self, str_id: str, pinned_core: List[Core], invoker: Invoker):
-        self.id: str = str_id
-        self.pinned_core: List[Core] = pinned_core
-        self.invoker: Invoker = invoker
-
-    def __repr__(self):
-        return f"id:{self.id},pinnedCore:{[c.id for c in self.pinned_core]},invk_id:{self.invoker.id}"
-
-
-class Func:
-    def __init__(self, id, namesp, name, mem_req, cpu_req, sla, invoker_2_referenceExecTime):
-        self.id = id
-        self.namesp = namesp
-        self.name = name
-        self.mem_req = mem_req
-        self.cpu_req = cpu_req
-        self.sla = sla
-        self.invokerType_2_referenceExecTime: dict[str, int] = invoker_2_referenceExecTime
 
 
 class Stats:
@@ -403,7 +279,7 @@ class Cluster:
             invoker.num_busy_container = busy_sum
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
-        logging.info(f"invokers state:\n {self.id_2_invoker.values()}")
+        #logging.info(f"invokers state:\n {self.id_2_invoker.values()}")
         # logging.info(f"func_2_busy: {self.func_2_busyinfo}")
 
     def pre_creation_container(self, func_id_list):
@@ -412,24 +288,18 @@ class Cluster:
                 # {func_num_id: Action}
                 action_mp: dict[int, Action] = {}
                 for func_id in func_id_list:
-                    if type_ == 'xe':
-                        action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
-                    else:
-                        action_mp[func_id] = Action(container_delta=0, freq=3000, type=type_, target_load=1.0)
+                    action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
                 self.take_action(action_mp)
-
-    def roll_out_stop(self):
-        # called after the last step
-        global_signal_queue.put(['reset', 0])  # the start call will reset the line pointer again
 
     def terminate_trajectory(self):
         # stop workload
         # ---------LastStep--------StopWorkload-------Reward-----Reset--->
         global_signal_queue.put(["reset", 0])
+        logging.info("------------->---->---->Terminating workload<-------<-----------------")
 
     def reset(self, seed=None, options=None):
         self.curr_step = 0
-        time.sleep(1) # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
+        time.sleep(4) # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
         # a last step invocation get db recorded and is queried at the next first time step
         logging.info(
             f"---------------------------------------------------------Reset-------------------------------------------------------------")
@@ -441,6 +311,7 @@ class Cluster:
         self.routing_stub.ResetRoutingServiceState(EmptyRequest())
         self.actionRealizeCounter.clear()
         self.func_2_invocation2Arrival.clear()
+        self.invocation_store.reset()
         self.stats.reset_coldstart()  # reset cold start count, in lock
         time.sleep(3) # wait the state of container to settle
         self.active_func_ids = self.all_func_ids[:self.nn_func_input_count]
@@ -583,9 +454,9 @@ class Cluster:
             invocation_store=self.invocation_store)
         state = self.get_obs(func_2_tail_latency,
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
-        logging.info(
-            f'[----------Reward----------->]\nReward:\n{reward_dict}\nfunc_2_tail_latency (contain queued):\n{func_2_tail_latency}\nfun_2_invoker2LatencyList (not containing queued):\n{func_2_invoker2latencyList}')
         self.curr_step +=1
+        logging.info(
+            f'[----------Reward {self.curr_step}----------->]\nReward:\n{reward_dict}\nfunc_2_tail_latency (contain queued):\n{func_2_tail_latency}\nfun_2_invoker2LatencyList (not containing queued):\n{func_2_invoker2latencyList}')
         return state, reward_dict, False, False, self.state_info
 
     def get_execution_time(self, db_activations: list[dict]):
@@ -711,8 +582,8 @@ class Cluster:
                               func.mem_req,
                               arrival_info.func_2_arrivalEma[func_str],
                               # NOTE the real meaning of "cold start" with different setting. It's different than Openwhisk
-                              self.stats.get_cold_start_count(func_str),
-                              func_2_tail_latency[func_str]  # NOTE, rethink: new added, include all queueing jobs
+                              self.stats.get_cold_start_count(func_str)
+                              #func_2_tail_latency[func_str]  # NOTE, rethink: new added, include all queueing jobs
                               ]
             _debug_dict_[func_str]['cold_start_cnt'] = self.stats.get_cold_start_count(func_str)
             _debug_dict_[func_str]['3s_req_count'] = arrival_info.query_count_3s[func_str]
@@ -740,10 +611,8 @@ class Cluster:
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
         print(
-            '[=============================================State Input===================================================================================]')
+            '[================>NN State Input<=============]')
         pprint(_debug_dict_)
-        print(
-            '[===========================================================================================================================================]')
         if do_state_clip:
             return np.clip(nn_state, -state_clip_value, state_clip_value)
         else:
