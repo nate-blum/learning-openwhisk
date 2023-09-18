@@ -69,11 +69,12 @@ class Reward:
             except KeyError:
                 invoker_id_int = activation_2_invoker[activation_id]
                 func_2_invoker2Latency[func_name][invoker_id_int].append(latency)
-                logging.warning(
-                    f"Missing instanceId info in db for: {activation_id} on {activation_2_invoker[activation_id]}")
+                # logging.warning(
+                #     f"Missing instanceId info in db for: {activation_id} on {activation_2_invoker[activation_id]}")
             if activation['end'] - latency < _validation_early_arrival_db_record[func_name][invoker_id_int]:
                 _validation_early_arrival_db_record[func_name][invoker_id_int] = activation['end'] - latency
-            invocation_store.set_finish_time(invocation_id=activation_id, finish_time=activation['end'],
+            if invocation_store.is_in_store(activation_id): # NOTE, some record might be from previous round (before reset)
+                invocation_store.set_finish_time(invocation_id=activation_id, finish_time=activation['end'],
                                              invoker=invoker_id_int)
             # remove the activation queried from database respond from local invocation dict
             # the db record must be in the local invocation dict
@@ -86,7 +87,7 @@ class Reward:
         self.activation_last_round = self.activation_curr_round.copy()
         self.activation_curr_round.clear()
         _validate_FIFO_execution(func_2_invocation2Arrival, _validation_early_arrival_db_record, activation_2_invoker)
-        invocation_store.check_invocation_fifo(activation_2_invoker)
+        #invocation_store.check_invocation_fifo(activation_2_invoker)
         num_local_invocation_record_after = sum([len(i) for i in func_2_invocation2Arrival.values()])
         # logging.info(
         #     f"func_2_invocation2Arrival # before: {num_local_invocation_record} # after:{num_local_invocation_record_after}, # db queried: {num_db_record}")
@@ -143,3 +144,4 @@ def _validate_FIFO_execution(func_2_invocation2Arrival: dict[str, dict[str, int]
                 logging.error(
                     f"@@@@@@@@@@@@@==>Record with arrival time older than current older db arrival exist, probably indicating Not FIFO: "
                     f"time difference (millisecond):{_validation_early_arrival_db_record[func][activation_2_invoker[invo]] - round(arrival / 1_000_000)}, activationID:{invo}")
+                #logging.error(f'Current Func2Invocation2Arrival:\n {func_2_invocation2Arrival}')

@@ -180,7 +180,7 @@ class RolloutBuffer:
 
 class PPO:
     # using time dependent baseline to compute the advantage
-    def __init__(self, env: Cluster, eval_env, num_evn, func_state_dim, num_func, cluster_state_dim,
+    def __init__(self, env: Cluster, num_evn, func_state_dim, num_func, cluster_state_dim,
                  action_dim,
                  hidden_size, activation, clip, gamma, trajectory_len, init_stds, std_decay_rate, min_std,
                  max_n_update, batch_size, epoch, lr=3e-4,
@@ -188,7 +188,7 @@ class PPO:
         self.time_stamp = utility.get_curr_time()
         self.setup_logging()
         self.num_traj = num_evn
-        self.eval_env: Cluster = eval_env
+        # self.eval_env: Cluster = eval_env
         # assert (num_evn > 1)
         self.env = env
         self.obs_dim = self._get_obs_dim(func_state_dim, num_func, cluster_state_dim)
@@ -207,13 +207,14 @@ class PPO:
         self.min_std = min_std
         self.max_n_update = max_n_update
         self.train_mode = train_mode
-        #self.cluster_state_name = self.env.get_attr('cluster_state_name')[0]
+        # self.cluster_state_name = self.env.get_attr('cluster_state_name')[0]
         self.server_type_lst = self.env.server_types
         self.n_epochs = epoch
         self.batch_size = batch_size
         self.buffers = RolloutBuffer(size=trajectory_len, n_env=num_evn, obs_dim=self.obs_dim, action_dim=action_dim,
                                      ppo_obj=self, gamma=self.gamma)
         self.normalize_method = training_configs.NN['normalize_method']
+        self.training_update_cnt = 0
 
     def setup_logging(self):
         # file handler
@@ -240,9 +241,10 @@ class PPO:
             actions, action_logprobs = self.policy.act(states, stds)
         return actions, action_logprobs
 
-
     def collect_rollouts_real_ow_cluster(self, T: int):
         for i in range(self.num_traj):
+            logging.info(
+                f"\n\n============================>Begin Trajectory ({self.training_update_cnt}-{i}) Rollout<=================================")
             state, info = self.env.reset(
                 options={'workload_start': training_configs.workload_config['workload_line_start'],
                          'random_start': training_configs.workload_config['random_start']})
@@ -251,14 +253,15 @@ class PPO:
                 self.buffers.states[t][i] = np.array(state).copy()
                 actions_np = actions.detach().cpu().numpy()
                 # [rewards_dict, rewards_dict2]
-                state, reward, terminated, truncated, _ = self.env.step(actions_np, t==T)  # NOTE, do I need detach
+                state, reward, terminated, truncated, _ = self.env.step(actions_np,
+                                                                        t == T - 1)  # NOTE, do I need detach
                 self.buffers.actions[t][i] = np.array(actions_np).copy()
                 # print(self.buffers.logprobs[t].shape,action_logprobs.clone().cpu().numpy().shape )
                 self.buffers.logprobs[t][i] = action_logprobs.clone().cpu().numpy()
                 rewards_all = reward['all']
                 self.buffers.rewards[t][i] = rewards_all
                 # self._extract_info_for_monitor(rewards, infos, t)
-
+            logging.info(f"============================>Trajectory ({self.training_update_cnt}-{i}) Rollout Done<=================================")
 
     # def _extract_info_for_monitor(self, rewards: dict, infos: dict, t):
     #     # save rewards from every env
@@ -303,8 +306,7 @@ class PPO:
 
     def train(self):
         wandb_init(self.time_stamp, self.read_all_config())
-        num_update = 0
-        while num_update < self.max_n_update:
+        while self.training_update_cnt < self.max_n_update:
             t = time.time()
             self.collect_rollouts_real_ow_cluster(self.trajectory_len)
             if training_configs.NN['normalize_method'] == 'greenDRL':
@@ -331,26 +333,27 @@ class PPO:
 
             # self.wandb_log(loss, num_update)
             # wandb.watch(self.policy, log="gradients", log_freq=20)
-            if num_update % training_configs.eval_config['eval_every_n_update'] == 0:
+            if self.training_update_cnt % training_configs.eval_config['eval_every_n_update'] == 0:
                 # print(ratio.detach().numpy())
-                self.evaluate(num_update)
+                self.evaluate(self.training_update_cnt)
                 # self.print_action_from_buffer()
             self.buffers.reset()
             self.decay_std()
-            num_update += 1
+            self.training_update_cnt += 1
             logging.info(
-                "[{}] Training iteration {} done in {} second".format(self.time_stamp, num_update, time.time() - t))
-            if num_update % 500 == 0 and num_update != 0:
+                "[{}] Training iteration {} done in {} second".format(self.time_stamp, self.training_update_cnt,
+                                                                      time.time() - t))
+            if self.training_update_cnt % 500 == 0 and self.training_update_cnt != 0:
                 torch.save(self.policy.state_dict(),
                            os.path.join(config_local.torch_model_save_dir,
-                                        '{}_{}.pth'.format(self.time_stamp, num_update)))
+                                        '{}_{}.pth'.format(self.time_stamp, self.training_update_cnt)))
 
     def evaluate(self, step):
+        logging.info(f'--------------------------->>>Start evaluating {step}<<<<---------------------------------')
         T = training_configs.eval_config['T']
         std = torch.FloatTensor(training_configs.eval_config['std'])
-        state, info = self.eval_env.reset(
+        state, info = self.env.reset(
             options={'workload_start': training_configs.eval_config['workload_line_start']})
-
         state_lst = np.zeros((T, self.obs_dim), dtype=np.float32)
         action_lst = np.zeros((T, self.action_dim), dtype=np.float32)
         rewards_lst = np.zeros((T,), dtype=np.float32)
@@ -361,9 +364,9 @@ class PPO:
             action, action_logpro = self.select_action(state, std)
             state_lst[t] = state
             action_np = action.detach().cpu().numpy()
-            mapped_action = self.eval_env.map_action(action_np)
-            print(mapped_action)
-            state, rewards, terminated, truncated, info = self.eval_env.step(action_np)
+            mapped_action = self.env.map_action(action_np)
+            #logging.info(f'Mapped action:\n{mapped_action}')
+            state, rewards, terminated, truncated, info = self.env.step(action_np, t == T - 1)
             action_lst[t] = action_np
             rewards_lst[t] = rewards['all']
             rewards_power_lst[t] = rewards['power']
@@ -374,7 +377,7 @@ class PPO:
             #     self.server_type_lst}
             # utilization_dict.append(utilizations)
 
-            print(self.eval_env.id_2_invoker.values())
+            print(self.env.id_2_invoker.values())
         wandb.log({'reward': np.mean(rewards_lst), 'reward_sla': np.mean(rewards_sla_lst),
                    'reward_power': np.mean(rewards_power_lst)}, step=step)
 
@@ -424,25 +427,26 @@ def wandb_init(timestamp: str, config: dict = None):
     wandb.login()
     wandb.init(dir=config_local.wandb_dir,
                config=config,
-               project='green-faas',
+               project='real_ow',
                group=training_configs.wandb_group_name,
                name=training_configs.note + timestamp,
                id=str(uuid.uuid4())
                # mode=WANDB_MODE
                )
+    logging.info("Wandb Initialized")
 
 
 if __name__ == '__main__':
     # a single environment for evaluation
-    eval_env = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
-                       nn_func_input_count=config.input_space_spec['n_func'])
+    # eval_env = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
+    #                    nn_func_input_count=config.input_space_spec['n_func'])
     env = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
-                       nn_func_input_count=config.input_space_spec['n_func'])
-    ppo = PPO(env=env, eval_env=eval_env, num_evn= 1,
+                  nn_func_input_count=config.input_space_spec['n_func'])
+    ppo = PPO(env=env, num_evn=1,
               func_state_dim=config.input_space_spec['func_state_dim'],
               num_func=config.input_space_spec['n_func'],
               cluster_state_dim=config.input_space_spec['cluster_state_dim'],
-              action_dim=2, hidden_size=training_configs.NN['hidden_size'],
+              action_dim=4, hidden_size=training_configs.NN['hidden_size'],
               activation=training_configs.NN['activation'], clip=training_configs.NN['clip'],
               gamma=training_configs.NN['gamma'],
               trajectory_len=training_configs.trajectory_len, init_stds=training_configs.init_std,

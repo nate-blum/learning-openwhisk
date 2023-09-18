@@ -10,13 +10,14 @@ trace_root = config_local.trace_root_path
 # wandb_group_name = "GreenFaaS_PoissonOnly2funcs_RewardRatio"
 #wandb_group_name = "PoissonAllfuncs_RewardRatio_randomSelect"
 #wandb_group_name = "AzureTop5funcs_ratioReward"
-wandb_group_name = "Interference_AzureTop5funcs_ratioReward"
+#wandb_group_name = "Interference_AzureTop5funcs_ratioReward"
+wandb_group_name = "RealOpenWhiskTrainingTest"
 
 note = "rewardRatio0.5_T100_2ContainerPerCore_" + config.CONFIG_NOTE
 SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
-num_envs = 10
-trajectory_len = 100
+num_envs = 4
+trajectory_len = 30
 
 max_num_update = 4000
 init_std = [10 ** 2, 10 ** 2, 10 ** 2, 10 ** 2]  # [func1Delta, func1Type, func2Delta, func2Type]
@@ -29,7 +30,7 @@ type_mapping_boundary = [0]
 
 
 select_func_params = {
-    'more_than_2_funcs': True,
+    'more_than_2_funcs': False,
     # [********>this affect the features<********]
     'arrival_delta_window_size_millis': 60000,  # should be less than the arrival_q_time_range_limit (1 min)
     'ema_coeff': 0.4,
@@ -96,9 +97,9 @@ params = {
 }
 
 eval_config = {
-    'T': 50,
+    'T': 30,
     'std': [0.1, 0.1, 0.1, 0.1],
     'workload_line_start': 200,
     'log_mode': 'warn',
-    'eval_every_n_update': 10
+    'eval_every_n_update': 2
 }
