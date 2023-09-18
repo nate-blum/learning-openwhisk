@@ -12,11 +12,15 @@ import clusterstate_pb2_grpc as clusterstate_service
 from grpc_reflection.v1alpha import reflection
 import threading
 
-state = {}
+state = {
+    "instance": 0
+}
 
 class RoutingService(routing_service.RoutingServiceServicer):
     def GetInvocationRoute(self, request, context):
-        return routing_types.GetInvocationRouteResponse(invokerInstanceId=0)
+        state["instance"] += 1
+        state["instance"] %= 3
+        return routing_types.GetInvocationRouteResponse(invokerInstanceId=state["instance"])
 
     def RoutingUpdateClusterState(self, request, context):
         print(f"[{datetime.now().strftime('%H:%M:%S')}]", request)
