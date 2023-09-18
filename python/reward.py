@@ -87,7 +87,7 @@ class Reward:
         self.activation_last_round = self.activation_curr_round.copy()
         self.activation_curr_round.clear()
         _validate_FIFO_execution(func_2_invocation2Arrival, _validation_early_arrival_db_record, activation_2_invoker)
-        invocation_store.check_invocation_fifo(activation_2_invoker)
+        #invocation_store.check_invocation_fifo(activation_2_invoker)
         num_local_invocation_record_after = sum([len(i) for i in func_2_invocation2Arrival.values()])
         # logging.info(
         #     f"func_2_invocation2Arrival # before: {num_local_invocation_record} # after:{num_local_invocation_record_after}, # db queried: {num_db_record}")

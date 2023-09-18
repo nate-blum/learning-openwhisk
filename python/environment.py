@@ -58,9 +58,9 @@ MOST_RECENT_KILLED_CONTAINER_SET_LIMIT = 10
 SERVER_POWER_SPECS = config.server_power_specs
 RATIO_BASED_LATENCY_FACTOR = training_configs.reward_setting['latency_factor']
 DEFAULT_SERVER_TYPE = config.default_svr_type
-ARRIVAL_Q_TIMER_INTERVAL_SEC = 0.2
+ARRIVAL_Q_TIMER_INTERVAL_SEC = 0.5
 ARRIVAL_Q_TIME_RANGE_LIMIT = int(120e9)  # 120second, 2 minute, in nanosecond
-EMA_TIME_WINDOW_NSEC = 60_000_000_000  # 1min in nanosecond #NOTE, rethink the interval
+EMA_TIME_WINDOW_NSEC = 30_000_000_000  # 0.5 min in nanosecond #NOTE, rethink the interval
 ARRIVAL_EMA_BUCKET_NSEC = 2_000_000_000  # 2 second in nanosecond
 ARRIVAL_EMA_COEFF = 0.4
 SELECT_FUNC_ARRIVAL_EMA_WEIGHT = training_configs.select_func_weight['arrival_delta']
@@ -129,7 +129,7 @@ class Cluster:
 
         self.cluster_spec_dict: dict = cluster_spec_dict
         #self.server_type_lst = list(cluster_spec_dict.keys())
-        self.server_types = []
+        self.server_types: list[str] = []
         self.serverType_2_index: dict[str, int] = {}
         self.func_spec_dict = func_spec_dict
         self.all_func_ids = []
@@ -142,6 +142,7 @@ class Cluster:
         self.active_func_ids = self.all_func_ids[:nn_func_input_count]
         self.cluster_peak_pw = self._get_cluster_peak()
         self.db = DB()
+        self.db.create_index(['end'])
         self.func_2_invocation2Arrival: dict[str, dict[str, int]] = defaultdict(dict)  # arrival time is in nanosecond
         self.first_update_arrival_event = threading.Event()
         self.last_query_db_since = round(time.time() * 1000)
@@ -244,7 +245,6 @@ class Cluster:
             self.serverType_2_index[_type] = i
         self.most_recent_killed_container_cache = {invoker_id: deque(maxlen=MOST_RECENT_KILLED_CONTAINER_SET_LIMIT)
                                                    for invoker_id in self.id_2_invoker.keys()}
-        logging.info("Env initialization done")
         invoker_host_lst = [i.hostname for i in self.id_2_invoker.values()]
         # initialize invoker python runtime
         for host in invoker_host_lst:
@@ -262,6 +262,7 @@ class Cluster:
         time.sleep(5)
         for invk in self.id_2_invoker.values():
             invk.py_runtime_client = rpyc.connect(invk.hostname, INVOKER_PY_RPC_PORT)
+        logging.info("Env initialization done")
 
     def update_invoker_state(self):
         # update the invoker state after controller rpc update, this method is called with in a lock
@@ -299,7 +300,7 @@ class Cluster:
 
     def reset(self, seed=None, options=None):
         self.curr_step = 0
-        time.sleep(4) # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
+        time.sleep(3) # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
         # a last step invocation get db recorded and is queried at the next first time step
         logging.info(
             f"---------------------------------------------------------Reset-------------------------------------------------------------")
@@ -312,6 +313,8 @@ class Cluster:
         self.actionRealizeCounter.clear()
         self.func_2_invocation2Arrival.clear()
         self.invocation_store.reset()
+        for v in self.most_recent_killed_container_cache.values():
+            v.clear()
         self.stats.reset_coldstart()  # reset cold start count, in lock
         time.sleep(3) # wait the state of container to settle
         self.active_func_ids = self.all_func_ids[:self.nn_func_input_count]
@@ -327,7 +330,7 @@ class Cluster:
                 workload_line_start += random.randint(0, 2000)
         self.first_update_arrival_event.clear()
         self.first_update_arrival_event.wait()
-        time.sleep(6)  # wait the state to settle down, primarily container utilization
+        #time.sleep(6)  # wait the state to settle down, primarily container utilization
         global_signal_queue.put(["start", workload_line_start])
         obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda: defaultdict(list)))
         return obs, self.state_info
@@ -423,7 +426,7 @@ class Cluster:
     # realize the action in the openwhisk system
     def take_action(self, mapped_action: Dict[int, Action]):
         # mapped_action: {id, Action}
-        logging.info(f'==============>Taking action:\n {pformat(mapped_action)}')
+        logging.info(f'\n              =====>Taking action<======\n {pformat(mapped_action)}')
         for funcid, action in mapped_action.items():
             if action.container_delta > 0:  # add container
                 self.add_container_with_multiple_pinning(action, self.strId_2_funcs[self.intId_2_funcStrName[funcid]])
@@ -442,6 +445,7 @@ class Cluster:
             EmptyRequest())
         if is_last: # if it is the last step, stop the workload
             self.terminate_trajectory()
+        #compute_reward_start_t = time.time()
         # contain queued,      not contain queued
         reward_dict, func_2_tail_latency, func_2_invoker2latencyList = self.reward.compute_reward_using_overall_stat(
             db_activations=db_activations,
@@ -452,11 +456,14 @@ class Cluster:
             latency_factor=RATIO_BASED_LATENCY_FACTOR,
             activation_2_invoker=activation_2_invoker.res_dict,
             invocation_store=self.invocation_store)
+        #t_reward_done =time.time()
+        #logging.info(f"Compute reward time {t_reward_done- compute_reward_start_t}")
         state = self.get_obs(func_2_tail_latency,
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
+        #logging.info(f"Get obs time: {time.time()-t_reward_done}")
         self.curr_step +=1
         logging.info(
-            f'[----------Reward {self.curr_step}----------->]\nReward:\n{reward_dict}\nfunc_2_tail_latency (contain queued):\n{func_2_tail_latency}\nfun_2_invoker2LatencyList (not containing queued):\n{func_2_invoker2latencyList}')
+            f'\n[----------Reward {self.curr_step}----------->]\n{reward_dict}\n      [func_2_tail_latency (contain queued):]\n{func_2_tail_latency}\n     [fun_2_invoker2LatencyList (not containing queued):]\n{func_2_invoker2latencyList}')
         return state, reward_dict, False, False, self.state_info
 
     def get_execution_time(self, db_activations: list[dict]):
@@ -535,7 +542,9 @@ class Cluster:
         #logging.info(f"GetInvocationDict Result:\n{resp}")
         curr_time = round(time.time() * 1000)  # database time is in millisecond
         #NOTE, it is import the db query happen before local activation record update
+        start_t = time.time()
         db_activations = self.db.GetActivationRecordsEndTimeSinceUntil(since=self.last_query_db_since - 1000, end=curr_time)['docs']
+        logging.info(f'Db query time: {time.time() - start_t}')
         #db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG  could miss record whose start time is within last window but finished in the current window
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
         # update the local invocation dict based on rpc result

@@ -1,3 +1,5 @@
+import logging
+
 import requests
 import config_local
 import couchdb
@@ -12,6 +14,7 @@ class CouchDB_Py:
         self.server = couchdb.Server(
             f"{self.configs['db_protocol']}://{self.configs['db_username']}:{self.configs['db_password']}@{self.configs['db_host']}:{self.configs['db_port']}/")
         self.db = self.server['whisk_local_activations']
+        print("CouchDB version:", self.server.version())
 
     @staticmethod
     def GetDBConfigs():
@@ -48,6 +51,9 @@ class CouchDB_Py:
         res = self.db.find(mango_query=body)
         return res
 
+    def delete(self, doc):
+        self.db.delete(doc)
+
 
 class DB:
     DB_CONFIG_FILE = config_local.db_config_file  #
@@ -56,6 +62,8 @@ class DB:
         self.configs = self.GetDBConfigs()
         self.url_find = self.configs['db_protocol'] + '://' + self.configs['db_host'] + ':' + \
                         self.configs['db_port'] + '/' + 'whisk_local_activations/_find'
+        self.url_index = self.configs['db_protocol'] + '://' + self.configs['db_host'] + ':' + \
+                         self.configs['db_port'] + '/' + 'whisk_local_activations/_index'
 
     @staticmethod
     def GetDBConfigs():
@@ -155,15 +163,41 @@ class DB:
 
         return respond.json()
 
+    def create_index(self, field_lst: list[str]):
+
+        headers = {
+            'Content-Type': 'application/json',
+        }
+        body = {
+            "index": {
+                "fields": field_lst
+            },
+            "name": "end-index",
+            "type": "json"
+        }
+        resp = requests.post(self.url_index, json=body, headers=headers,
+                             auth=(self.configs['db_username'], self.configs['db_password']))
+        logging.info(f"Index created: {resp}")
+
+
 if __name__ == '__main__':
     import time
 
     db = DB()
+    #db.create_index(['end'])
     db_python = CouchDB_Py()
     t = time.time()
-    res = db.GetActivationRecordsSince((int(time.time()) - 3600 * 50*10) * 1000, int(time.time()) * 1000)
-    # res = db_python.find((int(time.time()) - 3600 * 24 * 10) * 1000, 100000)
-    #print(type(res))
-    for record in res['docs']:
-            print(record)
-    print(time.time() - t)
+    res = db.GetActivationRecordsEndTimeSinceUntil((int(time.time()) - 3600 * 1) * 1000, int(time.time()) * 1000)
+    #res = db_python.find((int(time.time()) - 3600 * 60) * 1000, 1_000_000)
+    t_end = time.time()
+    count = 0
+    for i in res:
+        count += 1
+        print(i)
+        # db_python.delete(i)
+
+    print("count:", count)
+
+    # for record in res['docs']:
+    #         print(record)
+    print(t_end - t)

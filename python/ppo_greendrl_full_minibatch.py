@@ -261,7 +261,7 @@ class PPO:
                 rewards_all = reward['all']
                 self.buffers.rewards[t][i] = rewards_all
                 # self._extract_info_for_monitor(rewards, infos, t)
-            logging.info(f"============================>Trajectory {i} Rollout Done<=================================")
+            logging.info(f"============================>Trajectory ({self.training_update_cnt}-{i}) Rollout Done<=================================")
 
     # def _extract_info_for_monitor(self, rewards: dict, infos: dict, t):
     #     # save rewards from every env
@@ -365,7 +365,7 @@ class PPO:
             state_lst[t] = state
             action_np = action.detach().cpu().numpy()
             mapped_action = self.env.map_action(action_np)
-            logging.info(f'Mapped action:\n{mapped_action}')
+            #logging.info(f'Mapped action:\n{mapped_action}')
             state, rewards, terminated, truncated, info = self.env.step(action_np, t == T - 1)
             action_lst[t] = action_np
             rewards_lst[t] = rewards['all']
