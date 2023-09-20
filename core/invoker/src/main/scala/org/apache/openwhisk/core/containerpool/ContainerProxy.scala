@@ -313,7 +313,7 @@ class ContainerProxy(factory: (TransactionId,
       rpcCreationStartTime = Instant.now()
       isCreatedByRPC = true
       factory(
-        TransactionId.invokerWarmup,
+        job.transid,
         ContainerProxy.containerName(instance, "warm",
           s"${kind}_${job.action.name.name}_pin_${job.corePin}"),
         job.action.exec.image,

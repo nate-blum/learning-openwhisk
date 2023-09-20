@@ -18,7 +18,7 @@
 package org.apache.openwhisk.core.invoker.grpc
 
 import akka.actor.ActorSystem
-import org.apache.openwhisk.common.Logging
+import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.invoker.{InvokerCore, InvokerReactive}
 import org.apache.openwhisk.grpc.{DeleteContainerWithIdRequest, DeleteRandomContainerRequest, EmptyRequest, GetBufferedInvocationsResponse, InvokerService, NewWarmedContainerRequest, SetAllowOpenWhiskToFreeMemoryRequest, SuccessResponse}
 
@@ -29,6 +29,7 @@ class InvokerServiceImpl(invokerRef: InvokerCore)(implicit actorSystem: ActorSys
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
   def handleEvent(event: InvokerRPCEvent): Future[Any] = {
+    implicit val transid: TransactionId = TransactionId(TransactionId.generateTid(), false)
     invokerRef.asInstanceOf[InvokerReactive].handleInvokerRPCEvent(event)
   }
 

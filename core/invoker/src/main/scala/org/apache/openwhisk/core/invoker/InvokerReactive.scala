@@ -163,14 +163,13 @@ class InvokerReactive(
   private val pool =
     actorSystem.actorOf(ContainerPool.props(childFactory, poolConfig, activationFeed, prewarmingConfigs))
 
-  def getExecutableAction(actionName: String, namespace: String): Future[WhiskAction] = {
+  def getExecutableAction(actionName: String, namespace: String)(implicit transid: TransactionId): Future[WhiskAction] = {
     val actionid = FullyQualifiedEntityName(EntityPath(namespace), EntityName(actionName)).toDocId.asDocInfo(DocRevision.empty)
-    implicit val transid: TransactionId = TransactionId.invoker
     WhiskAction
       .get(entityStore, actionid.id, actionid.rev, fromCache = false)
   }
 
-  def handleInvokerRPCEvent(event: InvokerRPCEvent): Future[Any] = {
+  def handleInvokerRPCEvent(event: InvokerRPCEvent)(implicit transid: TransactionId): Future[Any] = {
     event match {
       case NewWarmedContainerEvent(actionName, namespace, corePin, params) =>
        logging.info(this, s"newWarmedContainerEvent,${corePin}")
@@ -178,7 +177,7 @@ class InvokerReactive(
           .flatMap(action =>
             action.toExecutableWhiskAction match {
                 case Some(executable) =>
-                  pool ! BeginFullWarm(executable, corePin, params, TransactionId.invoker)
+                  pool ! BeginFullWarm(executable, corePin, params, transid)
                   Future.successful(())
                 case None =>
                   logging.error(this, s"non-executable action reached the invoker ${action.fullyQualifiedName(false)}")
