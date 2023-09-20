@@ -5,6 +5,7 @@ from collections import defaultdict
 import time
 from training_configs import SLA_PERCENTAGE
 from invocation_store import InvocationStore
+from datetime import datetime
 
 
 class Reward:
@@ -14,7 +15,10 @@ class Reward:
         # to guarantee no duplicated record is processed
         self.activation_curr_round: set[str] = set()
         self.activation_last_round:set[str] = set()
+        self.abnormal_record = []
 
+    def reset(self):
+        self.abnormal_record = []
     def compute_reward_using_overall_stat(self, db_activations: list,
                                           func_2_invocation2Arrival: dict[str, dict[str, int]],
                                           func_2_sla, get_power: Callable,
@@ -34,6 +38,8 @@ class Reward:
         rewards['all'] = rewards['sla'] + rewards['power']
         return rewards, func_2_tail_latency, func_2_invoker2latencyList
 
+
+    # TODO, make the latency more accurate
     def compute_latency_reward_ratio_based_wsk(self, db_activations: list,
                                                func_2_invocation2Arrival: dict[str, dict[str, int]],
                                                func_2_sla, activation_2_invoker: dict[str, int],
@@ -42,9 +48,9 @@ class Reward:
         func_2_invoker2Latency: defaultdict[str, defaultdict[int, list]] = defaultdict(
             lambda: defaultdict(list))
         func_2_latencyList: defaultdict[str, list] = defaultdict(list)  # {function: [...latencies...]}
-        # process latency record in the database
-        num_db_record = len(db_activations)
-        num_local_invocation_record = sum([len(i) for i in func_2_invocation2Arrival.values()])
+        # <------------process latency record in the database----------------->
+        # num_db_record = len(db_activations)
+        # num_local_invocation_record = sum([len(i) for i in func_2_invocation2Arrival.values()])
         _validation_early_arrival_db_record = defaultdict(
             lambda: defaultdict(lambda: int(1e20)))  # dummy max {func:{invoker: time}}
         for activation in db_activations:
@@ -61,7 +67,7 @@ class Reward:
                 if item['key'] == 'waitTime':
                     waitTime = item['value']
                     break
-            latency = activation['duration'] + waitTime  # in millisecond
+            latency = activation['duration'] + waitTime  # in millisecond, TODO, rethink the latency definition
             func_2_latencyList[func_name].append(latency)
             try:
                 invoker_id_int = activation['instanceId']
@@ -81,17 +87,15 @@ class Reward:
             try:
                 del func_2_invocation2Arrival[func_name][activation['activationId']]
             except Exception as e:
-                if self.cluster.curr_step !=0: # should only happen with small chance at the first step after reset
-                    logging.error(f"Delete activation record failed (db record must be in local arrival dict): {e}")
-                    assert False
+                logging.warning(f"DB record is not in local arrival dict: {activation['activationId']}")
         self.activation_last_round = self.activation_curr_round.copy()
         self.activation_curr_round.clear()
-        _validate_FIFO_execution(func_2_invocation2Arrival, _validation_early_arrival_db_record, activation_2_invoker)
+        self.validate_FIFO_and_delete_abnormal(func_2_invocation2Arrival, _validation_early_arrival_db_record, activation_2_invoker)
         #invocation_store.check_invocation_fifo(activation_2_invoker)
-        num_local_invocation_record_after = sum([len(i) for i in func_2_invocation2Arrival.values()])
+        #num_local_invocation_record_after = sum([len(i) for i in func_2_invocation2Arrival.values()])
         # logging.info(
         #     f"func_2_invocation2Arrival # before: {num_local_invocation_record} # after:{num_local_invocation_record_after}, # db queried: {num_db_record}")
-        # include activation that are still in the local activation dict (in the queue)
+        # <------------include activation that are still in the local activation dict (in the queue)----------->
         curr_time = time.time_ns()
         for func, invocation2Arrival in func_2_invocation2Arrival.items():
             for invocation, arrivalTime in invocation2Arrival.items():
@@ -132,16 +136,23 @@ class Reward:
     #             preserve_ratios.append(sla / latency_p99)
     #     return np.mean(preserve_ratios)  # result should be between 0 and 1
 
+    def validate_FIFO_and_delete_abnormal(self, func_2_invocation2Arrival: dict[str, dict[str, int]],
+                                          _validation_early_arrival_db_record: defaultdict[str, defaultdict],
+                                          activation_2_invoker: dict[str, int]):
+        to_delete = []
+        for func, invo2Arrival in func_2_invocation2Arrival.items():
+            for invo, arrival in invo2Arrival.items():
+                # db has at least one record
+                if _validation_early_arrival_db_record[func][activation_2_invoker[invo]] != int(1e20) and round(
+                        arrival / 1_000_000) < _validation_early_arrival_db_record[func][activation_2_invoker[invo]]:
+                    logging.error(
+                        f"@@@@@@@@@@@@@==>Record with arrival time older than current older db arrival exist, probably indicating Not FIFO, delete it: "
+                        f"time difference (millisecond):{_validation_early_arrival_db_record[func][activation_2_invoker[invo]] - round(arrival / 1_000_000)}, activationID:{invo}")
+                    # logging.error(f'Current Func2Invocation2Arrival:\n {func_2_invocation2Arrival}')
+                    to_delete.append((func, invo))
+                    self.abnormal_record.append([invo,datetime.fromtimestamp(arrival/1_000_000_000).strftime('%Y-%m-%d %H:%M:%S.%f')])
+        for k1,k2 in to_delete:
+            del func_2_invocation2Arrival[k1][k2]
 
-def _validate_FIFO_execution(func_2_invocation2Arrival: dict[str, dict[str, int]],
-                             _validation_early_arrival_db_record: defaultdict[str, defaultdict],
-                             activation_2_invoker: dict[str, int]):
-    for func, invo2Arrival in func_2_invocation2Arrival.items():
-        for invo, arrival in invo2Arrival.items():
-            # db has at least one record
-            if _validation_early_arrival_db_record[func][activation_2_invoker[invo]] != int(1e20) and round(
-                    arrival / 1_000_000) < _validation_early_arrival_db_record[func][activation_2_invoker[invo]]:
-                logging.error(
-                    f"@@@@@@@@@@@@@==>Record with arrival time older than current older db arrival exist, probably indicating Not FIFO: "
-                    f"time difference (millisecond):{_validation_early_arrival_db_record[func][activation_2_invoker[invo]] - round(arrival / 1_000_000)}, activationID:{invo}")
-                #logging.error(f'Current Func2Invocation2Arrival:\n {func_2_invocation2Arrival}')
+
+

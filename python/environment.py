@@ -39,9 +39,9 @@ from load_balance import start_rpc_routing_server_process
 from power import PDU_reader
 from workload_generator import start_workload_process
 from db_client import DB
-from  invocation_store import Invocation, InvocationStore
+from invocation_store import Invocation, InvocationStore
 import state_collector
-from common import Invoker,Container,Func
+from common import Invoker, Container, Func
 
 global_signal_queue = Queue()  # sending signal to control workload generator's reset/start
 SLOT_DURATION = training_configs.SLOT_DURATION_SECOND
@@ -68,7 +68,7 @@ SELECT_FUNC_LATENCY_SLACK_WEIGHT = training_configs.select_func_weight['latency_
 do_state_clip: bool = training_configs.NN['state_clip']
 state_clip_value = 2000
 PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
-PDU_OUTLET_LST = [11, 23, 24] # cloud-06 11, xe3nv 23, 24
+PDU_OUTLET_LST = [11, 23, 24]  # cloud-06 11, xe3nv 23, 24
 PDU_SAMPLE_INTERVAL = 0.4
 WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
 WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
@@ -81,7 +81,6 @@ INVOKER_PY_RPC_PORT = config_local.invoker_py_rpc_port
 INIT_WARM_CONTAINER_COUNT_PER_TYPE = training_configs.initialize_env['warm_cnt_per_type']
 # ---
 MORE_THAN_2_FUNC = training_configs.select_func_params['more_than_2_funcs']
-
 
 
 class Stats:
@@ -128,7 +127,7 @@ class Cluster:
         self.most_recent_killed_container_cache: dict[int, Deque[str]] = None
 
         self.cluster_spec_dict: dict = cluster_spec_dict
-        #self.server_type_lst = list(cluster_spec_dict.keys())
+        # self.server_type_lst = list(cluster_spec_dict.keys())
         self.server_types: list[str] = []
         self.serverType_2_index: dict[str, int] = {}
         self.func_spec_dict = func_spec_dict
@@ -146,7 +145,7 @@ class Cluster:
         self.func_2_invocation2Arrival: dict[str, dict[str, int]] = defaultdict(dict)  # arrival time is in nanosecond
         self.first_update_arrival_event = threading.Event()
         self.last_query_db_since = round(time.time() * 1000)
-        self.query_db_start_time = self.last_query_db_since # only be reset on each reset
+        self.query_db_start_time = self.last_query_db_since  # only be reset on each reset
         self.state_info = None
         self.invocation_store = InvocationStore()
         self.reward = Reward(self)
@@ -280,7 +279,7 @@ class Cluster:
             invoker.num_busy_container = busy_sum
             invoker.num_warm_container = warm_sum
             invoker.num_warming_container = warming_sum
-        #logging.info(f"invokers state:\n {self.id_2_invoker.values()}")
+        # logging.info(f"invokers state:\n {self.id_2_invoker.values()}")
         # logging.info(f"func_2_busy: {self.func_2_busyinfo}")
 
     def pre_creation_container(self, func_id_list):
@@ -292,15 +291,67 @@ class Cluster:
                     action_mp[func_id] = Action(container_delta=1, freq=3000, type=type_, target_load=1.0)
                 self.take_action(action_mp)
 
+    def block_until_reset_invoker_finish(self):
+        start_t = time.time()
+        for invoker in self.id_2_invoker.values():
+            while True:
+                container_list = invoker.rpyc_get_container_ids()
+                if not container_list:
+                    break
+                time.sleep(0.1)
+                if time.time() - start_t > 15:
+                    assert False, "Timeout while waiting reset result"
+            logging.info(f"Resetting finished for invoker_{invoker.id}")
+
+    # NOTE, should be used in a period during which no reset/deletion/creation happen
+    def check_consistency_cluster_state(self):
+        id_2_isConsistent = {id: False for id in self.id_2_invoker.keys()}
+        start_t = time.time()
+        while True:
+            for id, invoker in self.id_2_invoker:
+                if id_2_isConsistent[id]:
+                    continue
+                set_of_containerId: set[str] = set()  # all the busy and warm containerIds
+                with self.cluster_state_lock:
+                    for func, invk_2_container in self.func_2_warminfo.items():
+                        set_of_containerId.update([c.id for c in invk_2_container[invoker]])
+                    for func, invk_2_container in self.func_2_busyinfo.items():
+                        set_of_containerId.update([c.id for c in invk_2_container[invoker]])
+                container_lst_from_docker_runtime: list[str] = invoker.rpyc_get_container_ids()
+                # check (1), the agent's view of containers should always be a subset of the docker runtime's view
+                if not set_of_containerId.issubset(container_lst_from_docker_runtime):
+                    logging.critical(
+                        f"Set of containerIs from agent view is not a subset of docker runtime view:\n "
+                        f"agentView:{set_of_containerId}, dockerRuntimeView:{container_lst_from_docker_runtime}")
+                    assert False, "Inconsistent view"
+                # check (2) at some point the two set should be consistent
+                if set_of_containerId == container_lst_from_docker_runtime:
+                    id_2_isConsistent[id] = True
+            # check if the view of each invoker state is consistent
+            all_pass = True
+            for is_consistent in id_2_isConsistent.values():
+                if not is_consistent:
+                    all_pass = False
+                    break
+            if all_pass:
+                logging.info("View of each invoker state is consistent for docker runtime and agent")
+                break
+            if time.time() - start_t > 10: # ten second
+                logging.critical(f"Inconsistent view after timeout: {id_2_isConsistent}")
+                assert False, "Inconsistent view"
+
     def terminate_trajectory(self):
         # stop workload
         # ---------LastStep--------StopWorkload-------Reward-----Reset--->
         global_signal_queue.put(["reset", 0])
         logging.info("------------->---->---->Terminating workload<-------<-----------------")
+        logging.info(f"Abnormal record:\n {self.reward.abnormal_record}")
+        self.check_consistency_cluster_state()
 
     def reset(self, seed=None, options=None):
         self.curr_step = 0
-        time.sleep(3) # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
+        time.sleep(
+            3)  # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
         # a last step invocation get db recorded and is queried at the next first time step
         logging.info(
             f"---------------------------------------------------------Reset-------------------------------------------------------------")
@@ -316,7 +367,9 @@ class Cluster:
         for v in self.most_recent_killed_container_cache.values():
             v.clear()
         self.stats.reset_coldstart()  # reset cold start count, in lock
-        time.sleep(3) # wait the state of container to settle
+        self.reward.reset()
+        time.sleep(4)  # wait the state of container to settle
+        self.block_until_reset_invoker_finish()
         self.active_func_ids = self.all_func_ids[:self.nn_func_input_count]
         if MORE_THAN_2_FUNC:
             self.pre_creation_container(self.all_func_ids)
@@ -330,9 +383,10 @@ class Cluster:
                 workload_line_start += random.randint(0, 2000)
         self.first_update_arrival_event.clear()
         self.first_update_arrival_event.wait()
-        #time.sleep(6)  # wait the state to settle down, primarily container utilization
+        # time.sleep(6)  # wait the state to settle down, primarily container utilization
         global_signal_queue.put(["start", workload_line_start])
         obs = self.get_obs(func_2_tail_latency={}, func_2_invoker2latencyList=defaultdict(lambda: defaultdict(list)))
+        self.pdu.clear_samples()
         return obs, self.state_info
 
     def map_action(self, simple_action: np.ndarray) -> Dict[int, Action]:
@@ -433,19 +487,18 @@ class Cluster:
             elif action.container_delta < 0:
                 self.delete_container_multiple_pinning(func_id_str=self.intId_2_funcStrName[funcid], type=action.type)
 
-    def step(self, action: np.ndarray, is_last = False):
+    def step(self, action: np.ndarray, is_last=False):
         # logging.info(
         #     f"---------------------------------------------------------Step-------------------------------------------------------------")
         mapped_action: Dict[int, Action] = self.map_action(action)
-        self.pdu.clear_samples()
         self.take_action(mapped_action)
         time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
         db_activations = self.update_activation_record()
         activation_2_invoker: routing_pb2.GetRoutingResultDictResponse = self.routing_stub.GetRoutingResultDict(
-            EmptyRequest())
-        if is_last: # if it is the last step, stop the workload
+            EmptyRequest())  # Must after db query, as some db record does not have instanceId, need use this result
+        if is_last:  # if it is the last step, stop the workload
             self.terminate_trajectory()
-        #compute_reward_start_t = time.time()
+        # compute_reward_start_t = time.time()
         # contain queued,      not contain queued
         reward_dict, func_2_tail_latency, func_2_invoker2latencyList = self.reward.compute_reward_using_overall_stat(
             db_activations=db_activations,
@@ -456,23 +509,25 @@ class Cluster:
             latency_factor=RATIO_BASED_LATENCY_FACTOR,
             activation_2_invoker=activation_2_invoker.res_dict,
             invocation_store=self.invocation_store)
-        #t_reward_done =time.time()
-        #logging.info(f"Compute reward time {t_reward_done- compute_reward_start_t}")
+        self.pdu.clear_samples()  # a step can affect not the current slot but next slot
+        # t_reward_done =time.time()
+        # logging.info(f"Compute reward time {t_reward_done- compute_reward_start_t}")
         state = self.get_obs(func_2_tail_latency,
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
-        #logging.info(f"Get obs time: {time.time()-t_reward_done}")
-        self.curr_step +=1
+        # logging.info(f"Get obs time: {time.time()-t_reward_done}")
+        self.curr_step += 1
         logging.info(
             f'\n[----------Reward {self.curr_step}----------->]\n{reward_dict}\n      [func_2_tail_latency (contain queued):]\n{func_2_tail_latency}\n     [fun_2_invoker2LatencyList (not containing queued):]\n{func_2_invoker2latencyList}')
+        logging.info(f"------------->Invoker state:\n{self.id_2_invoker}")
         return state, reward_dict, False, False, self.state_info
 
     def get_execution_time(self, db_activations: list[dict]):
         ...
 
-    def step_dummy(self):
-        self._check_healthy_on_each_step()
-        self.pdu.clear_samples()
-        time.sleep(2)
+    # def step_dummy(self):
+    #     self._check_healthy_on_each_step()
+    #     self.pdu.clear_samples()
+    #     time.sleep(2)
 
     # get the features of All function so that to choose the active working functions.
     def select_from_all_state(self, ema_dict: ScalarMap[str, float],
@@ -536,25 +591,27 @@ class Cluster:
                 res_dict[invoker.type][2] += len(set_container)
         return res_dict
 
-    # TODO, validate the query latency is acceptable in training
     def update_activation_record(self) -> list[dict]:
         resp: routing_pb2.GetInvocationDictResponse = self.routing_stub.GetInvocationDict(routing_pb2.EmptyRequest())
-        #logging.info(f"GetInvocationDict Result:\n{resp}")
+        # logging.info(f"GetInvocationDict Result:\n{resp}")
         curr_time = round(time.time() * 1000)  # database time is in millisecond
-        #NOTE, it is import the db query happen before local activation record update
+        # NOTE, it is import the db query happen before local activation record update
         start_t = time.time()
-        db_activations = self.db.GetActivationRecordsEndTimeSinceUntil(since=self.last_query_db_since - 1000, end=curr_time)['docs']
-        logging.info(f'Db query time: {time.time() - start_t}')
-        #db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG  could miss record whose start time is within last window but finished in the current window
+        db_activations = \
+            self.db.GetActivationRecordsEndTimeSinceUntil(since=self.last_query_db_since - 1000, end=curr_time)['docs']
+        query_latency = time.time() - start_t
+        logging.info(f'Db query time: {query_latency}')
+        assert query_latency < 0.1, "db query latency > 0.1 sec"
+        # db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG  could miss record whose start time is within last window but finished in the current window
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
         # update the local invocation dict based on rpc result
         for func, listRecord in resp.func2_invocationRecordList.items():
             for invocation, arrTime in zip(listRecord.invocationId, listRecord.arrivalTime):
                 assert invocation not in self.func_2_invocation2Arrival[func]
                 self.func_2_invocation2Arrival[func][invocation] = arrTime  # the time is in nanosecond
-                self.invocation_store.init_invocation(invocation,arrTime, func)
-        #logging.info(f"====>Function_2_invocation2arrival:\n{self.func_2_invocation2Arrival}")
-        #logging.info(f"DB_activations:\n{db_activations}")
+                self.invocation_store.init_invocation(invocation, arrTime, func)
+        # logging.info(f"====>Function_2_invocation2arrival:\n{self.func_2_invocation2Arrival}")
+        # logging.info(f"DB_activations:\n{db_activations}")
         return db_activations
 
     def compute_utilization(self) -> Dict:
@@ -576,7 +633,7 @@ class Cluster:
         select_func: list[str] = self.select_from_all_state(arrival_info.func_2_arrivalEma,
                                                             func_2_tail_latency)  # the parameter might be changed
         # Some (func, type) pair might not be in the default dict
-        #func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func)
+        # func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func)
         nn_state = []
         cluster_state = []  # not tired to a specific function
         core_avg_pinned: list[
@@ -592,7 +649,7 @@ class Cluster:
                               arrival_info.func_2_arrivalEma[func_str],
                               # NOTE the real meaning of "cold start" with different setting. It's different than Openwhisk
                               self.stats.get_cold_start_count(func_str)
-                              #func_2_tail_latency[func_str]  # NOTE, rethink: new added, include all queueing jobs
+                              # func_2_tail_latency[func_str]  # NOTE, rethink: new added, include all queueing jobs
                               ]
             _debug_dict_[func_str]['cold_start_cnt'] = self.stats.get_cold_start_count(func_str)
             _debug_dict_[func_str]['3s_req_count'] = arrival_info.query_count_3s[func_str]
@@ -615,7 +672,7 @@ class Cluster:
                     func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
                 _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}'] = container_per_type_dict[type_][0] + \
                                                                             container_per_type_dict[type_][2]
-                #_debug_dict_[func_str][f'container_util_{type_}'] = container_util
+                # _debug_dict_[func_str][f'container_util_{type_}'] = container_util
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
@@ -714,8 +771,8 @@ if __name__ == "__main__":
 
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
-    #cluster.id_2_invoker[1].rpc_add_container('func1', [0])
-    #cluster.id_2_invoker[1].rpc_reset_invoker()
+    # cluster.id_2_invoker[1].rpc_add_container('func1', [0])
+    # cluster.id_2_invoker[1].rpc_reset_invoker()
     t = tester.Test(cluster)
     t.test_create_container_issue_requests()
     # pprint(cluster.func_2_invocation2Arrival)
