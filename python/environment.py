@@ -298,17 +298,19 @@ class Cluster:
                 container_list = invoker.rpyc_get_container_ids()
                 if not container_list:
                     break
+                print("container list from docker runtime==>", container_list)
                 time.sleep(0.1)
-                if time.time() - start_t > 15:
+                if time.time() - start_t > 100:
                     assert False, "Timeout while waiting reset result"
             logging.info(f"Resetting finished for invoker_{invoker.id}")
+        logging.info(f"Blocking for {time.time() - start_t}sec for resetting invokers")
 
     # NOTE, should be used in a period during which no reset/deletion/creation happen
     def check_consistency_cluster_state(self):
         id_2_isConsistent = {id: False for id in self.id_2_invoker.keys()}
         start_t = time.time()
         while True:
-            for id, invoker in self.id_2_invoker:
+            for id, invoker in self.id_2_invoker.items():
                 if id_2_isConsistent[id]:
                     continue
                 set_of_containerId: set[str] = set()  # all the busy and warm containerIds
