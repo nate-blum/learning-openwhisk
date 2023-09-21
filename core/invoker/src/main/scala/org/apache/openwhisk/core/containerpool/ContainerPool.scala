@@ -358,7 +358,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     // Container is free to take more work
     case NeedWork(warmData: WarmedData) =>
-      val oldData = freePool.get(sender()).getOrElse(busyPool(sender()))
+      if (!freePool.contains(sender()) && !busyPool.contains(sender()))
+        logging.info(this, s"need work event, pools do not have container ${sender()}, ${warmData.container.containerId.asString}")
+      val oldData = freePool.getOrElse(sender(), busyPool(sender()))
       val newData =
         warmData.copy(lastUsed = oldData.lastUsed, activeActivationCount = oldData.activeActivationCount - 1)
       if (newData.activeActivationCount < 0) {
@@ -382,11 +384,13 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       processBufferOrFeed()
 
     case NeedWork(data: PreWarmedData) =>
+      logging.info(this, s"need work event, prewarm ${sender()}, ${data.container.containerId.asString}")
       prewarmStartingPool = prewarmStartingPool - sender()
       prewarmedPool = prewarmedPool + (sender() -> data)
       processBufferOrFeed()
 
     case WarmCompleted(data: WarmedData) =>
+      logging.info(this, s"warm completed event ${sender()}, ${data.container.containerId.asString}")
       warmingPool = warmingPool - sender()
       freePool = freePool + (sender() -> data)
       processBufferOrFeed()
@@ -503,6 +507,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     val ref = childFactory(context)
     val data = MemoryData(memoryLimit)
     freePool = freePool + (ref -> data)
+    logging.info(this, s"added new container to freePool ${sender()}")
     ref -> data
   }
 
@@ -557,6 +562,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           // Move the container to the usual pool
           freePool = freePool + (ref -> data)
           prewarmedPool = prewarmedPool - ref
+          logging.info(this, s"added new container to freePool from prewarm ${sender()}, ${data.container.containerId.asString}")
           // Create a new prewarm container
           // NOTE: prewarming ignores the action code in exec, but this is dangerous as the field is accessible to the
           // factory

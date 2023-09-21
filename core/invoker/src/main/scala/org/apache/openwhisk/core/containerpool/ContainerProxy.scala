@@ -395,6 +395,7 @@ class ContainerProxy(factory: (TransactionId,
     case Event(completed: PreWarmCompleted, _) =>
 //      logging.info(this, "sending prewarm completed event")
       context.parent ! NeedWork(completed.data)
+      logging.info(this, s"sending need work from prewarm completed, $self ${completed.data.container.containerId.asString}")
       goto(Started) using completed.data
 
     case Event(w: Warm, _) =>
@@ -466,6 +467,7 @@ class ContainerProxy(factory: (TransactionId,
     // Init was successful
     case Event(data: WarmedData, _: PreWarmedData) =>
       //in case concurrency supported, multiple runs can begin as soon as init is complete
+      logging.info(this, s"sending need work from event data warmedData, $self ${data.container.containerId.asString}")
       context.parent ! NeedWork(data)
       stay using data
 
@@ -701,10 +703,12 @@ class ContainerProxy(factory: (TransactionId,
         if (needWork) {
           //after buffer processing, then send NeedWork
           context.parent ! NeedWork(newData)
+          logging.info(this, s"sending need work from first request work, $self ${newData.container.containerId.asString}")
         }
         true
       } else {
         context.parent ! NeedWork(newData)
+        logging.info(this, s"sending need work from second request work, $self ${newData.container.containerId.asString}")
         bufferProcessing //true in case buffer is still in process
       }
     } else {
