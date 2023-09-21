@@ -323,6 +323,7 @@ class PPO:
                     advantages = rollout_data.advantages
                     if self.normalize_method == "batch":  # normalize using stable baseline method only when the method is batch
                         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
                     ratio = torch.exp(log_prob - rollout_data.old_log_prob)
                     policy_loss_1 = advantages * ratio
                     policy_loss_2 = advantages * torch.clamp(ratio, 1 - self.clip, 1 + self.clip)

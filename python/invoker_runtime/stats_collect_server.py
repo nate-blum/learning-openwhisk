@@ -3,6 +3,7 @@ from collections import deque
 import rpyc
 import time
 import subprocess
+from subprocess import check_output
 import threading
 from rpyc.utils.server import ThreadedServer
 import pickle
@@ -56,6 +57,21 @@ class StatService(rpyc.Service):
                         logging.info(f"Delete inactive container: {container}")
             time.sleep(self.DEL_THREAD_PERIOD_SEC)
 
+    def exposed_get_container_ids(self):
+        try:
+            out = check_output(["docker", "ps", "--format", "{{.ID}} {{.Image}}", "--no-trunc"])
+        except Exception as e:
+            logging.error(f"Get container ids error: {e}")
+            return None
+        out_list = out.splitlines()
+        function_id_lst = []
+        for line in out_list:
+            line_arr = line.split()
+            if line_arr[1].decode()[:13] == 'whisk/invoker':
+                continue
+            function_id_lst.append(line_arr[0].decode())
+        return pickle.dumps(function_id_lst)
+
     def exposed_get_container_utilization(self):
         # return Immutable type to avoid Netref, if use netref not sure how the locking is gonna work, be on the safe side
         with self.update_lock:
@@ -73,7 +89,8 @@ def test_subprocess():
     while True:
         for line in p.stdout:
             print(line.strip(), time.time())
-
+def test():
+    StatService().expose_get_container_ids()
 
 if __name__ == "__main__":
     service = ThreadedServer(StatService(), port=18861)
