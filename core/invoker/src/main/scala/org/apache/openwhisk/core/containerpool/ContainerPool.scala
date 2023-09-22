@@ -186,6 +186,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case DeleteContainerWithIdEvent(containerId) =>
+      logging.info(this, s"Receive deletion rpc, starting deleting container $containerId")
       getContainerForDeletionWithId(containerId) match {
         case Some(c) =>
           removeContainer((c._1, c._2.corePin))
