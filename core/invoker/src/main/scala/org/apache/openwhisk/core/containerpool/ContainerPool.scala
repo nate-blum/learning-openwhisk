@@ -358,8 +358,11 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     // Container is free to take more work
     case NeedWork(warmData: WarmedData) =>
-      if (!freePool.contains(sender()) && !busyPool.contains(sender()))
-        logging.info(this, s"need work event, pools do not have container ${sender()}, ${warmData.container.containerId.asString}")
+      if (!freePool.contains(sender()) && !busyPool.contains(sender())) {
+        logging.info(this, s"needWork event, pools do not have container ${sender()}, ${warmData.container.containerId.asString}")
+      }else {
+        logging.info(this, s"needWork event, pools have container ${sender()}, ${warmData.container.containerId.asString}")
+      }
       val oldData = freePool.getOrElse(sender(), busyPool(sender()))
       val newData =
         warmData.copy(lastUsed = oldData.lastUsed, activeActivationCount = oldData.activeActivationCount - 1)
