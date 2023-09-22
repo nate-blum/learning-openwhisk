@@ -20,7 +20,8 @@ num_envs = 4
 trajectory_len = 30
 
 max_num_update = 4000
-init_std = [10 ** 2, 10 ** 2, 10 ** 2, 10 ** 2]  # [func1Delta, func1Type, func2Delta, func2Type]
+init_std = [50 ** 2, 50 ** 2, 50 ** 2, 50 ** 2]  # for testing purpose
+#init_std = [10 ** 2, 10 ** 2, 10 ** 2, 10 ** 2]  # [func1Delta, func1Type, func2Delta, func2Type]
 min_std = [0.5, 0.5, 0.5, 0.5]
 std_decay = 0.9998
 #-----------------Action Mapping------------------------------------

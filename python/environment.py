@@ -72,7 +72,7 @@ PDU_OUTLET_LST = [11, 23, 24]  # cloud-06 11, xe3nv 23, 24
 PDU_SAMPLE_INTERVAL = 0.4
 WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
 WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
-WSK_PATH = "/usr/local/bin/wsk"
+WSK_PATH = config_local.wsk_path
 SSH_USER_NAME = auth.user_name
 SSH_PASSWD = auth.passwd
 INVOKER_PYTHON_PATH = config_local.invoker_py_path
@@ -322,13 +322,16 @@ class Cluster:
                 container_lst_from_docker_runtime: list[str] = invoker.rpyc_get_container_ids()
                 # check (1), the agent's view of containers should always be a subset of the docker runtime's view
                 if not set_of_containerId.issubset(container_lst_from_docker_runtime):
-                    logging.critical(
+                    logging.error(
                         f"Set of containerIs from agent view is not a subset of docker runtime view:\n "
                         f"agentView:{set_of_containerId}, dockerRuntimeView:{container_lst_from_docker_runtime}")
                     assert False, "Inconsistent view"
                 # check (2) at some point the two set should be consistent
-                if set_of_containerId == container_lst_from_docker_runtime:
+                if set_of_containerId == set(container_lst_from_docker_runtime):
                     id_2_isConsistent[id] = True
+                # else:
+                #     logging.info(
+                #         f'Inconsistent View, owView vs docker view:\n{sorted(list(set_of_containerId))}\n{sorted(container_lst_from_docker_runtime)}')
             # check if the view of each invoker state is consistent
             all_pass = True
             for is_consistent in id_2_isConsistent.values():
@@ -336,10 +339,11 @@ class Cluster:
                     all_pass = False
                     break
             if all_pass:
-                logging.info("View of each invoker state is consistent for docker runtime and agent")
+                logging.info(
+                    f"View of each invoker state is consistent for docker runtime and agent, converge time: {time.time() - start_t}")
                 break
-            if time.time() - start_t > 10: # ten second
-                logging.critical(f"Inconsistent view after timeout: {id_2_isConsistent}")
+            if time.time() - start_t > 30:  # ten second
+                logging.error(f"Inconsistent view after timeout: {id_2_isConsistent}")
                 assert False, "Inconsistent view"
 
     def terminate_trajectory(self):
@@ -773,6 +777,7 @@ if __name__ == "__main__":
 
     cluster = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                       nn_func_input_count=2)
+    cluster.reset()
     # cluster.id_2_invoker[1].rpc_add_container('func1', [0])
     # cluster.id_2_invoker[1].rpc_reset_invoker()
     t = tester.Test(cluster)
