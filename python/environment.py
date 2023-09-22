@@ -322,7 +322,7 @@ class Cluster:
                 container_lst_from_docker_runtime: list[str] = invoker.rpyc_get_container_ids()
                 # check (1), the agent's view of containers should always be a subset of the docker runtime's view
                 if not set_of_containerId.issubset(container_lst_from_docker_runtime):
-                    logging.critical(
+                    logging.error(
                         f"Set of containerIs from agent view is not a subset of docker runtime view:\n "
                         f"agentView:{set_of_containerId}, dockerRuntimeView:{container_lst_from_docker_runtime}")
                     assert False, "Inconsistent view"
@@ -343,7 +343,7 @@ class Cluster:
                     f"View of each invoker state is consistent for docker runtime and agent, converge time: {time.time() - start_t}")
                 break
             if time.time() - start_t > 30:  # ten second
-                logging.critical(f"Inconsistent view after timeout: {id_2_isConsistent}")
+                logging.error(f"Inconsistent view after timeout: {id_2_isConsistent}")
                 assert False, "Inconsistent view"
 
     def terminate_trajectory(self):
