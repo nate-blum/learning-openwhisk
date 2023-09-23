@@ -429,13 +429,13 @@ class ContainerProxy(factory: (TransactionId,
       goto(Running) using PreWarmedData(data.container, data.kind, data.memoryLimit, 1, data.corePin, data.expires)
 
     case Event(Remove, data: PreWarmedData) =>
-//      logging.info(this, "remove, started, prewarmeddata")
+      logging.info(this, "remove, started, prewarmeddata")
       destroyContainer(data, false)
 
     // prewarm container failed
     case Event(_: FailureMessage, data: PreWarmedData) =>
       MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_CONTAINER_HEALTH_FAILED_PREWARM)
-//      logging.info(this, "prewarm failed, started")
+      logging.info(this, "remove, prewarm failed, started")
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
       destroyContainer(data, false)
   }
@@ -513,7 +513,7 @@ class ContainerProxy(factory: (TransactionId,
       rescheduleJob = true
       rejectBuffered()
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
-//      logging.info(this, "container health error, running")
+      logging.info(this, "remove, container health error, running")
       destroyContainer(newData, false)
 
     // Failed after /init (the first run failed) on prewarmed or cold start
@@ -577,22 +577,24 @@ class ContainerProxy(factory: (TransactionId,
 
     // pause grace timed out
     case Event(StateTimeout, data: WarmedData) =>
-//      logging.info(this, s"reached pause timeout, ${pauseGrace}")
-      if (data.action.name.name.contains("invokerHealthTestAction"))
+      logging.info(this, s"reached pause timeout, ${pauseGrace}")
+      if (data.action.name.name.contains("invokerHealthTestAction")) {
+        logging.info(this, "remove-removeHealthTestAction")
         destroyContainer(data, false)
+      }
       else
         data.container.suspend()(TransactionId.invokerNanny).map(_ => ContainerPaused).pipeTo(self)
       goto(Pausing)
 
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
     case Event(Remove, data: WarmedData) =>
-//      logging.info(this, "destroy container running")
+     logging.info(this, "remove-destroy container running (ready)")
       destroyContainer(data, false)
 
     // warm container failed
     case Event(_: FailureMessage, data: WarmedData) =>
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
-//      logging.info(this, "warm failed, running")
+     logging.info(this, "remove-warm failed, running")
       destroyContainer(data, false)
   }
 
@@ -600,7 +602,7 @@ class ContainerProxy(factory: (TransactionId,
     case Event(ContainerPaused, data: WarmedData)   => goto(Paused)
     //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
     case Event(_: FailureMessage, data: WarmedData) =>
-//      logging.info(this, "destroy container pausing")
+     logging.info(this, "remove-destroy container pausing")
       destroyContainer(data, false)
     case _                                          => delay
   }
@@ -630,7 +632,7 @@ class ContainerProxy(factory: (TransactionId,
     case Event(Remove, data: WarmedData) =>
       rescheduleJob = true // to suppress sending message to the pool and not double count
       //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
-//      logging.info(this, "destroying container, paused")
+     logging.info(this, "remove-destroying container, paused")
       destroyContainer(data, false)
   }
 
@@ -646,7 +648,7 @@ class ContainerProxy(factory: (TransactionId,
       //if there are items in runbuffer, process them if there is capacity, and stay; otherwise if we have any pending activations, also stay
       if (activeCount == 0) {
         //replacePrewarm is true by default, set to false to disable all internal openwhisk heuristics
-//        logging.info(this, "run completed, removing")
+        logging.info(this, "remove-run completed, removing")
         destroyContainer(newData, false)
       } else {
         stay using newData
