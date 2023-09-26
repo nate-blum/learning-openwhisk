@@ -36,9 +36,10 @@ import org.apache.openwhisk.common.LoggingMarkers._
 import org.apache.openwhisk.core.controller.Controller
 import org.apache.openwhisk.core.loadBalancer.grpc.{ClusterStateClient, RoutingClient}
 import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
-import org.apache.openwhisk.grpc.{ActionStatePerInvoker}
+import org.apache.openwhisk.grpc.ActionStatePerInvoker
 import org.apache.openwhisk.spi.SpiLoader
 
+import java.time.{Duration, Instant}
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
@@ -146,10 +147,11 @@ class RPCHeuristicLoadBalancer(
     println(lbConfig)
     logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
 
-    val invoker: Future[Option[InvokerInstanceId]] =
-      routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString())
-        .map(res => schedulingState.invokers.find(_.id.instance == res.invokerInstanceId)
-          .map(_.id))
+    val (res, time) = routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString())
+    val invoker: Future[Option[InvokerInstanceId]] = res.map(r => {
+      logging.info(this, s"Routing request finished, took ${Duration.between(time, Instant.now()).toMillis}ms")
+      schedulingState.invokers.find(_.id.instance == r.invokerInstanceId).map(_.id)
+    })
 
     invoker flatMap {
       case Some(id: InvokerInstanceId) => // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
