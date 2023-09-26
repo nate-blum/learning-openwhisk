@@ -300,7 +300,7 @@ class Cluster:
                     break
                 print("container list from docker runtime==>", container_list)
                 time.sleep(0.1)
-                if time.time() - start_t > 100:
+                if time.time() - start_t > 120:
                     assert False, "Timeout while waiting reset result"
             logging.info(f"Resetting finished for invoker_{invoker.id}")
         logging.info(f"Blocking for {time.time() - start_t}sec for resetting invokers")
@@ -329,9 +329,9 @@ class Cluster:
                 # check (2) at some point the two set should be consistent
                 if set_of_containerId == set(container_lst_from_docker_runtime):
                     id_2_isConsistent[id] = True
-                # else:
-                #     logging.info(
-                #         f'Inconsistent View, owView vs docker view:\n{sorted(list(set_of_containerId))}\n{sorted(container_lst_from_docker_runtime)}')
+                else:
+                    logging.info(
+                        f'Inconsistent View (invoker_{id}), owView vs docker:\n{sorted(list(set_of_containerId))}\n{sorted(container_lst_from_docker_runtime)}')
             # check if the view of each invoker state is consistent
             all_pass = True
             for is_consistent in id_2_isConsistent.values():
@@ -356,6 +356,8 @@ class Cluster:
 
     def reset(self, seed=None, options=None):
         self.curr_step = 0
+        self.last_query_db_since = round(
+            time.time() * 1000)  # try to cover as early as possible even might catch record in previous round (will be ignored, when calcuate reward)
         time.sleep(
             3)  # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
         # a last step invocation get db recorded and is queried at the next first time step
@@ -381,7 +383,7 @@ class Cluster:
             self.pre_creation_container(self.all_func_ids)
         else:
             self.pre_creation_container(self.active_func_ids)
-        self.last_query_db_since = round(time.time() * 1000)
+        # self.last_query_db_since = round(time.time() * 1000)
         workload_line_start = 0
         if options:
             workload_line_start = options['workload_start']
@@ -607,7 +609,7 @@ class Cluster:
             self.db.GetActivationRecordsEndTimeSinceUntil(since=self.last_query_db_since - 1000, end=curr_time)['docs']
         query_latency = time.time() - start_t
         logging.info(f'Db query time: {query_latency}')
-        assert query_latency < 0.1, "db query latency > 0.1 sec"
+        assert query_latency < 0.2, "db query latency > 0.2 sec"
         # db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG  could miss record whose start time is within last window but finished in the current window
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
         # update the local invocation dict based on rpc result

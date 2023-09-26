@@ -110,8 +110,8 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
         # get all invokers whose memory is enough and the type match default type, if exist find a proper one
         # get all invoker whose memory is enough, if exist find a proper one
         # No invoker has enough memory
-        logging.info("Get routing cold start RPC request")
         func_str = request.func_str
+        logging.info(f"Get routing cold start RPC request for {func_str}")
         self.cluster.stats.increase_cold_start_count(func_str)
         try:
             mem_req = self.cluster.strId_2_funcs[func_str].mem_req  # in MB
@@ -128,7 +128,7 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                     res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_of_default_type).id
                 else:
                     res_invoker = self.cluster.find_proper_invoker_to_place_container(invoker_meet_mem).id
-                logging.info(f"Decided to cold start a container on invoker {res_invoker}")
+                logging.info(f"Decided to cold start on invoker {res_invoker} for {func_str}")
             else:
                 # when there is not enough resource, the default behavior is not free up memory of other function (could be configured by an RPC call)
                 res_invoker = 0

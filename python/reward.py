@@ -62,6 +62,9 @@ class Reward:
                 continue
             else:
                 self.activation_curr_round.add(activation_id)
+            if activation_id not in func_2_invocation2Arrival[func_name]: # it's a Default dict
+                logging.warning(f"DB record is not in local arrival dict: {activation['activationId']}")
+                continue
             waitTime = None
             for item in activation['annotations']:
                 if item['key'] == 'waitTime':
@@ -83,11 +86,8 @@ class Reward:
                 invocation_store.set_finish_time(invocation_id=activation_id, finish_time=activation['end'],
                                              invoker=invoker_id_int)
             # remove the activation queried from database respond from local invocation dict
-            # the db record must be in the local invocation dict
-            try:
-                del func_2_invocation2Arrival[func_name][activation['activationId']]
-            except Exception as e:
-                logging.warning(f"DB record is not in local arrival dict: {activation['activationId']}")
+            # the db record must be in the local invocation dict, or if not, it must be an invocation arrive in previous round
+            del func_2_invocation2Arrival[func_name][activation_id]
         self.activation_last_round = self.activation_curr_round.copy()
         self.activation_curr_round.clear()
         self.validate_FIFO_and_delete_abnormal(func_2_invocation2Arrival, _validation_early_arrival_db_record, activation_2_invoker)

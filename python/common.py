@@ -73,7 +73,6 @@ class Invoker:
 
     def rpc_delete_container(self, container_id: str, func_name: str):
         # TODO, how the Success Response is determined from Scala runtime
-        return
         response: SuccessResponse = self.stub.DeleteContainerWithId(
             DeleteContainerWithIdRequest(containerId=container_id))
 
