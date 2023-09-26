@@ -191,7 +191,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         case Some(c) =>
           removeContainer((c._1, c._2.corePin))
         case None =>
-          logging.info(this, s"could not find container $containerId when attempting to delete")
+          logging.warn(this, s"could not find container $containerId when attempting to delete")
       }
 
     case SetAllowOpenWhiskToFreeMemoryEvent(setValue) =>
@@ -363,29 +363,30 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
         logging.info(this, s"needWork event, pools do not have container ${sender()}, ${warmData.container.containerId.asString}")
       }else {
         logging.info(this, s"needWork event, pools have container ${sender()}, ${warmData.container.containerId.asString}")
-      }
-      val oldData = freePool.getOrElse(sender(), busyPool(sender()))
-      val newData =
-        warmData.copy(lastUsed = oldData.lastUsed, activeActivationCount = oldData.activeActivationCount - 1)
-      if (newData.activeActivationCount < 0) {
-        logging.error(this, s"invalid activation count after warming < 1 ${newData}")
-      }
-      if (newData.hasCapacity()) {
-        //remove from busy pool (may already not be there), put back into free pool (to update activation counts)
-        freePool = freePool + (sender() -> newData)
-        if (busyPool.contains(sender())) {
-          busyPool = busyPool - sender()
-          if (newData.action.limits.concurrency.maxConcurrent > 1) {
-            logging.info(
-              this,
-              s"concurrent container ${newData.container} is no longer busy with ${newData.activeActivationCount} activations")
-          }
+      
+        val oldData = freePool.getOrElse(sender(), busyPool(sender()))
+        val newData =
+          warmData.copy(lastUsed = oldData.lastUsed, activeActivationCount = oldData.activeActivationCount - 1)
+        if (newData.activeActivationCount < 0) {
+          logging.error(this, s"invalid activation count after warming < 1 ${newData}")
         }
-      } else {
-        busyPool = busyPool + (sender() -> newData)
-        freePool = freePool - sender()
+        if (newData.hasCapacity()) {
+          //remove from busy pool (may already not be there), put back into free pool (to update activation counts)
+          freePool = freePool + (sender() -> newData)
+          if (busyPool.contains(sender())) {
+            busyPool = busyPool - sender()
+            if (newData.action.limits.concurrency.maxConcurrent > 1) {
+              logging.info(
+                this,
+                s"concurrent container ${newData.container} is no longer busy with ${newData.activeActivationCount} activations")
+            }
+          }
+        } else {
+          busyPool = busyPool + (sender() -> newData)
+          freePool = freePool - sender()
+        }
+        processBufferOrFeed()
       }
-      processBufferOrFeed()
 
     case NeedWork(data: PreWarmedData) =>
       logging.info(this, s"need work event, prewarm ${sender()}, ${data.container.containerId.asString}")

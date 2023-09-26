@@ -6,18 +6,20 @@ import org.apache.openwhisk.common.Logging
 import org.apache.openwhisk.core.loadBalancer.RPCHeuristicLoadBalancerConfig
 import org.apache.openwhisk.grpc._
 
+import java.time.Instant
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.util.{Failure}
+import scala.util.Failure
 
 class RoutingClient(lbConfig: RPCHeuristicLoadBalancerConfig)(implicit actorSystem: ActorSystem, logging: Logging) {
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
   private val clientSettings: GrpcClientSettings = GrpcClientSettings.connectToServiceAt(lbConfig.agentIp, lbConfig.routingPort).withTls(false)
   val client: RoutingService = RoutingServiceClient(clientSettings)
 
-  def executeRoutingRequest(actionName: String, activationId: String): Future[GetInvocationRouteResponse] = {
+  def executeRoutingRequest(actionName: String, activationId: String): (Future[GetInvocationRouteResponse], Instant) = {
     logging.info(this, s"executing routing request for action: $actionName")
-    client.getInvocationRoute(GetInvocationRouteRequest(actionName, activationId))
+    val time = Instant.now()
+    (client.getInvocationRoute(GetInvocationRouteRequest(actionName, activationId)), time)
   }
 
   def executeRoutingClusterStateUpdate(state: mutable.Map[Int, ActionStatePerInvoker]): Unit = {
