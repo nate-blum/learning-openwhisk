@@ -145,8 +145,9 @@ class RPCHeuristicLoadBalancer(
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
     println(lbConfig)
-    logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
+//    logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
 
+    logging.info(this, s"time taken on invocation (activationId: ${msg.activationId}) before executing routing request: ${Duration.between(msg.transid.meta.start, Instant.now()).toMillis}")
     val (res, time) = routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString())
     val invoker: Future[Option[InvokerInstanceId]] = res.map(r => {
       logging.info(this, s"Routing request finished, took ${Duration.between(time, Instant.now()).toMillis}ms")
