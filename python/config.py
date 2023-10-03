@@ -1,77 +1,17 @@
-CONFIG_NOTE = "realWsk"
+from sub_config import config_two_func_0406 as sub_config
+#from sub_config import config_two_func as sub_config
+#CONFIG_NOTE = "realWsk"
+CONFIG_NOTE = sub_config.CONFIG_NOTE
 #cluster_state_name = 'cluster_state'
-server_power_specs = {
-    'xs': {'static': 20, 'peak': 100, 'num_core': 16},
-    'xe': {'static': 20, 'peak': 130, 'num_core': 8}
-}
+server_power_specs = sub_config.server_power_specs
 
-#NOTE, it must match the order defined in ansible host
-cluster_spec_dict = {
-    # "xe": [{"count": 1, "mem_capacity": 20000, "num_cores": 8, "per_core_dvfs": 1, "max_freq": 3000,
-    #          "min_freq": 2000, "desired_freq": 3000, "host": f"panic-cloud-xs-{i:02d}.cs.rutgers.edu",
-    #          "max_pinned_container_per_core": 2} for i in range(2)],
-    "xe": [{"count": 1, "mem_capacity": 20000, "num_cores": 8, "per_core_dvfs": 1, "max_freq": 3000,
-            "min_freq": 2000, "desired_freq": 3000, "host": f"panic-cloud-xe3nv-03.cs.rutgers.edu",
-            "max_pinned_container_per_core": 2}
-           ],
-    "xs": [{"count": 1, "mem_capacity": 20000, "num_cores": 16, "per_core_dvfs": 1, "max_freq": 3000,
-            "min_freq": 2000, "desired_freq": 3000, "host": f"panic-cloud-xs-06.cs.rutgers.edu",
-            "max_pinned_container_per_core": 2}
-           ],
+cluster_spec_dict = sub_config.cluster_spec_dict
+default_svr_type = sub_config.default_svr_type
 
-}
-default_svr_type = 'xe'
-# reward_weight = {
-#     'latency': 1,
-#     'power': 50
-# }
 
-# separate in case a function can have multiple SLA
-workload_characteristics = {
-    'sla': {
-        'func1': 500,
-        'func2': 1000
-    }
-}
+workload_characteristics = sub_config.workload_characteristics
 
-# func_spec_dict = {
-#     "func0": {'name': "func0", 'namesp': "default", 'mem_req': 1000, 'cpu_req': 1,
-#               'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-#               'container_start_latency': 1000, 'start_up_cpu_ratio': 1, 'invoker_2_referenceExecTime': {'xs': 800, 'xe': 500},
-#               'sla': 1000},
-#
-#     "func1": {'name': "func1", 'namesp': "default", 'mem_req': 1000, 'cpu_req': 1,
-#               'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-#               'container_start_latency': 1000, 'start_up_cpu_ratio': 1, 'invoker_2_referenceExecTime': {'xs': 300, 'xe': 200},
-#               'sla': 250},
-#
-#     "func2": {'name': "func2", 'namesp': "default", 'mem_req': 1000, 'cpu_req': 1,
-#               'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-#               'container_start_latency': 1000, 'start_up_cpu_ratio': 1, 'invoker_2_referenceExecTime': {'xs': 800, 'xe': 500},
-#               'sla': 1000},
-#
-#     "func3": {'name': "func3", 'namesp': "default", 'mem_req': 1000, 'cpu_req': 1,
-#               'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-#               'container_start_latency': 1000, 'start_up_cpu_ratio': 1, 'invoker_2_referenceExecTime': {'xs': 300, 'xe': 200},
-#               'sla':250
-#               },
-#
-#     "func4": {'name': "func4", 'namesp': "default", 'mem_req': 1000, 'cpu_req': 1,
-#               'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-#               'container_start_latency': 1000, 'start_up_cpu_ratio': 1, 'invoker_2_referenceExecTime': {'xs': 800, 'xe': 500},
-#               'sla': 1000},
-# }
-func_spec_dict = {
-    "func1": {'name': "func1", 'namesp': "guest", 'mem_req': 256, 'cpu_req': 1,
-              'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-              'invoker_2_referenceExecTime': {'xs': 100, 'xe': 200},
-              'sla': 500},
-    "func2": {'name': "func2", 'namesp': "guest", 'mem_req': 256, 'cpu_req': 2,
-              'cpu_intensive': True, 'mem_intensive': False, 'io_intensive': False,
-              'invoker_2_referenceExecTime': {'xs': 800, 'xe': 500},
-              'sla': 1500},
-
-}
+func_spec_dict = sub_config.func_spec_dict
 
 # NOTE, this must match the get_obs method in the environment
 input_space_spec = {

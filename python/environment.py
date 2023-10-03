@@ -106,6 +106,7 @@ class Cluster:
 
     def __init__(self, cluster_spec_dict, func_spec_dict: Dict[str, Dict], nn_func_input_count=2) -> None:
         self.time_stamp = utility.get_curr_time()
+        print(f"------------------------>Initializing Cluster, timestamp: {self.time_stamp}<---------------------")
         self.setup_logging()
         self.stats = Stats()
         self.func_id_counter = 0
@@ -351,18 +352,16 @@ class Cluster:
         # ---------LastStep--------StopWorkload-------Reward-----Reset--->
         global_signal_queue.put(["reset", 0])
         logging.info("------------->---->---->Terminating workload<-------<-----------------")
-        logging.info(f"Abnormal record:\n {self.reward.abnormal_record}")
-        self.check_consistency_cluster_state()
 
     def reset(self, seed=None, options=None):
         self.curr_step = 0
         self.last_query_db_since = round(
             time.time() * 1000)  # try to cover as early as possible even might catch record in previous round (will be ignored, when calcuate reward)
         time.sleep(
-            3)  # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
+            4)  # wait until invocation sent from the last step is settled (in queue buffered or executed), but still it is possible
         # a last step invocation get db recorded and is queried at the next first time step
         logging.info(
-            f"---------------------------------------------------------Reset-------------------------------------------------------------")
+            f"----------------------------------------Start Resetting-----------------------------------------------")
         # NOTE, make sure relevant data structure is reset correctly
         for invoker in self.id_2_invoker.values():
             invoker.rpc_reset_invoker()  # reset the invoker: delete all containers
@@ -376,7 +375,7 @@ class Cluster:
             v.clear()
         self.stats.reset_coldstart()  # reset cold start count, in lock
         self.reward.reset()
-        time.sleep(4)  # wait the state of container to settle
+        #time.sleep(4)  # wait the state of container to settle
         self.block_until_reset_invoker_finish()
         self.active_func_ids = self.all_func_ids[:self.nn_func_input_count]
         if MORE_THAN_2_FUNC:
@@ -500,12 +499,12 @@ class Cluster:
         #     f"---------------------------------------------------------Step-------------------------------------------------------------")
         mapped_action: Dict[int, Action] = self.map_action(action)
         self.take_action(mapped_action)
+        if is_last:  # if it is the last step, stop the workload
+            self.terminate_trajectory()
         time.sleep(SLOT_DURATION)  # NOTE, do not consider system process latency
         db_activations = self.update_activation_record()
         activation_2_invoker: routing_pb2.GetRoutingResultDictResponse = self.routing_stub.GetRoutingResultDict(
             EmptyRequest())  # Must after db query, as some db record does not have instanceId, need use this result
-        if is_last:  # if it is the last step, stop the workload
-            self.terminate_trajectory()
         # compute_reward_start_t = time.time()
         # contain queued,      not contain queued
         reward_dict, func_2_tail_latency, func_2_invoker2latencyList = self.reward.compute_reward_using_overall_stat(
@@ -523,10 +522,16 @@ class Cluster:
         state = self.get_obs(func_2_tail_latency,
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
         # logging.info(f"Get obs time: {time.time()-t_reward_done}")
-        self.curr_step += 1
+        self.stats.reset_coldstart() #BUGFIX, you need reset on every step, what about others
         logging.info(
-            f'\n[----------Reward {self.curr_step}----------->]\n{reward_dict}\n      [func_2_tail_latency (contain queued):]\n{func_2_tail_latency}\n     [fun_2_invoker2LatencyList (not containing queued):]\n{func_2_invoker2latencyList}')
+            f'\n[----------Reward {self.curr_step}----------->]\n{reward_dict}\n      func_2_tail_latency (contain queued)--->\n{func_2_tail_latency}\n     fun_2_invoker2LatencyList (not containing queued)--->\n{func_2_invoker2latencyList}')
+        logging.info(f"Abnormal record:\n {self.reward.abnormal_record}")
         logging.info(f"------------->Invoker state:\n{self.id_2_invoker}")
+        logging.info(f">------------------------------------Step {self.curr_step} Done----------------------------------------------<")
+        if is_last:
+            self.check_consistency_cluster_state()
+        self.curr_step += 1
+
         return state, reward_dict, False, False, self.state_info
 
     def get_execution_time(self, db_activations: list[dict]):
@@ -684,8 +689,7 @@ class Cluster:
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
-        print(
-            '[================>NN State Input<=============]')
+        logging.info('\n----->NN State Input<----')
         pprint(_debug_dict_)
         if do_state_clip:
             return np.clip(nn_state, -state_clip_value, state_clip_value)

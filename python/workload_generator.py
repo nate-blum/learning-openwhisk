@@ -88,7 +88,7 @@ class WorkloadGenerator:
         if (diff := time() - self.last_req_t) < elapse_to_prev_sec:  # assuming the interval in trace is in millisecond
             #logging.info(f"Sleeping {elapse_to_prev_sec - diff} seconds")
             sleep(elapse_to_prev_sec - diff)
-        #logging.info(f"Sending request----------->: {func_name}")
+        logging.info(f"Sending request----------->: {func_name}")
         match request_type:
             case "binary":
                 try:

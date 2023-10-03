@@ -2,26 +2,19 @@ import os
 import config_local
 import config
 trace_root = config_local.trace_root_path
+from sub_config import config_two_func
 
-# wandb_group_name = "GreenFaaS_arrival100"
-# wandb_group_name = "GreenFaaS"
-# wandb_group_name = "GreenFaaS_AzureTop5funcs"
-# wandb_group_name = "GreenFaaS_Poisson5funcs"
-# wandb_group_name = "GreenFaaS_PoissonOnly2funcs_RewardRatio"
-#wandb_group_name = "PoissonAllfuncs_RewardRatio_randomSelect"
-#wandb_group_name = "AzureTop5funcs_ratioReward"
-#wandb_group_name = "Interference_AzureTop5funcs_ratioReward"
-wandb_group_name = "RealOpenWhiskTrainingTest"
+wandb_group_name = "RealOpenWhiskTraining2Funcs"
 
-note = "rewardRatio0.5_T100_2ContainerPerCore_" + config.CONFIG_NOTE
 SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
-num_envs = 4
-trajectory_len = 30
+num_envs = 6
+trajectory_len = 40
+
 
 max_num_update = 4000
-init_std = [50 ** 2, 50 ** 2, 50 ** 2, 50 ** 2]  # for testing purpose
-#init_std = [10 ** 2, 10 ** 2, 10 ** 2, 10 ** 2]  # [func1Delta, func1Type, func2Delta, func2Type]
+#init_std = [50 ** 2, 50 ** 2, 50 ** 2, 50 ** 2]  # for testing purpose
+init_std = [10 ** 2, 10 ** 2, 10 ** 2, 10 ** 2]  # [func1Delta, func1Type, func2Delta, func2Type]
 min_std = [0.5, 0.5, 0.5, 0.5]
 std_decay = 0.9998
 #-----------------Action Mapping------------------------------------
@@ -52,7 +45,7 @@ workload_config = {
     #'trace_file': os.path.join(trace_root, 'faas_top5funcs_day2_scaledown_300.txt')
     #'trace_file': os.path.join(trace_root, 'workload_multiple_funcs_43111_range18000000_scale80.csv')
     # 'trace_file': os.path.join(trace_root, 'workload_range3600000_scale100.csv')
-    'trace_file': './workload/test_workload.csv'
+    'trace_file': config_two_func.workload_file
 }
 initialize_env = {
     'whether_initialize_env': True,
@@ -69,6 +62,8 @@ reward_setting = {
     'naive_sla_coeff': 1,
     'clip_sla': 3000 # whether to clip sla reward if the reward value is too large, 0 means no clip
 }
+note = f"rewardRatio{reward_setting['latency_factor']}_T{trajectory_len}_2ContainerPerCore_" + config.CONFIG_NOTE
+
 NN = {
     'activation': 'elu',  # *** impact factor ***
     'lr': 3e-4,  # *** impact factor ***
