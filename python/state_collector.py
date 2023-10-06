@@ -44,6 +44,10 @@ class WskClusterInfoCollector(clusterstate_pb2_grpc.ClusterStateServiceServicer)
                 invoker.free_mem = info.freeMemoryMB  # actually atomic operation, no need of lock
                 invoker.reset_core_pinning_count()  # reset core pinning info
                 for func_id_str, action_state in info.actionStates.items():
+                    if func_id_str[:13] == 'invokerHealth':
+                        continue
+                    if func_id_str not in self.cluster.func_2_busyinfo:
+                        continue # function that not considered in this run
                     touched_func_invoker_set.add((func_id_str, invoker_id))
                     # busy, warm,      [...str...]
                     for container_status, container_lst in action_state.stateLists.items():

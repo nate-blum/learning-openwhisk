@@ -66,12 +66,12 @@ ARRIVAL_EMA_COEFF = 0.4
 SELECT_FUNC_ARRIVAL_EMA_WEIGHT = training_configs.select_func_weight['arrival_delta']
 SELECT_FUNC_LATENCY_SLACK_WEIGHT = training_configs.select_func_weight['latency_slack']
 do_state_clip: bool = training_configs.NN['state_clip']
-state_clip_value = 2000
+state_clip_value = training_configs.NN['state_clip_value']
 PDU_HOST = 'panic-pdu-01.cs.rutgers.edu'
-PDU_OUTLET_LST = [11, 23, 24]  # cloud-06 11, xe3nv 23, 24
+PDU_OUTLET_LST = config.pdu_outlet_list
 PDU_SAMPLE_INTERVAL = 0.4
-WORKLOAD_TRACE_FILE = training_configs.workload_config['trace_file']
-WORKLOAD_START_POINTER = training_configs.workload_config['workload_line_start']
+WORKLOAD_TRACE_FILE = config.workload_config['trace_file']
+WORKLOAD_START_POINTER = config.workload_config['workload_line_start']
 WSK_PATH = config_local.wsk_path
 SSH_USER_NAME = auth.user_name
 SSH_PASSWD = auth.passwd
@@ -294,14 +294,15 @@ class Cluster:
 
     def block_until_reset_invoker_finish(self):
         start_t = time.time()
+        logging.info(f"......Blocking until reset invoker finishes........")
         for invoker in self.id_2_invoker.values():
             while True:
                 container_list = invoker.rpyc_get_container_ids()
                 if not container_list:
                     break
-                print("container list from docker runtime==>", container_list)
-                time.sleep(0.1)
-                if time.time() - start_t > 120:
+                #print("container list from docker runtime==>", container_list)
+                time.sleep(0.2)
+                if time.time() - start_t > 300:
                     assert False, "Timeout while waiting reset result"
             logging.info(f"Resetting finished for invoker_{invoker.id}")
         logging.info(f"Blocking for {time.time() - start_t}sec for resetting invokers")

@@ -24,6 +24,7 @@ class WorkloadGenerator:
         self.binary_data_cache = {}
         self.sto_stream = self.setup_logging()
         self.count = 0
+        self.global_counter = 0 # monotonically increasing
 
     def setup_logging(self):
         # file handler
@@ -88,17 +89,21 @@ class WorkloadGenerator:
         if (diff := time() - self.last_req_t) < elapse_to_prev_sec:  # assuming the interval in trace is in millisecond
             #logging.info(f"Sleeping {elapse_to_prev_sec - diff} seconds")
             sleep(elapse_to_prev_sec - diff)
-        logging.info(f"Sending request----------->: {func_name}")
+        #logging.info(f"Sending request----------->: {func_name}")
         match request_type:
             case "binary":
                 try:
                     data = self.binary_data_cache[data_file]
                 except KeyError:
+                    logging.info(f"key error when sending the payload: {data_file}")
                     data = open(data_file, "rb").read()
                     self.binary_data_cache[data_file] = data
                 self.ow_client.invoke_binary_data(action=func_name, data=data)
             case _:
                 self.ow_client.invoke_common(action=func_name)
+        self.global_counter+=1
+        logging.info(f"Sending request----------->: {func_name}, globalCount: {self.global_counter}")
+        assert self.state == "start"
         self.line_pointer += 1
         self.last_req_t = time()
 

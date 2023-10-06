@@ -6,7 +6,7 @@ from requests_futures.sessions import FuturesSession
 
 
 class OpenwhiskClient:
-    NUM_WORKER = 4
+    NUM_WORKER = 48
     WSK_PATH = "/usr/local/bin/wsk"
 
     def __init__(self, wsk_path: str):

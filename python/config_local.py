@@ -7,3 +7,4 @@ invoker_source_path = '/home/kz181/learning-openwhisk'
 invoker_py_rpc_port = 18861
 db_config_file = '/home/kz181/learning-openwhisk/ansible/db_local.ini'
 wsk_path= "/usr/local/bin/wsk"
+project_root = "/home/kz181/learning-openwhisk"

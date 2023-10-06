@@ -4,7 +4,7 @@ import config
 trace_root = config_local.trace_root_path
 from sub_config import config_two_func
 
-wandb_group_name = "RealOpenWhiskTraining2Funcs"
+wandb_group_name = "DummyOpenWhiskTraining2Funcs"
 
 SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
@@ -39,14 +39,7 @@ select_func_weight = {
     'latency_slack': 0.6
 }
 
-workload_config = {
-    'workload_line_start': 0,
-    'random_start': True,
-    #'trace_file': os.path.join(trace_root, 'faas_top5funcs_day2_scaledown_300.txt')
-    #'trace_file': os.path.join(trace_root, 'workload_multiple_funcs_43111_range18000000_scale80.csv')
-    # 'trace_file': os.path.join(trace_root, 'workload_range3600000_scale100.csv')
-    'trace_file': config_two_func.workload_file
-}
+
 initialize_env = {
     'whether_initialize_env': True,
     'warm_cnt_per_type': 1
@@ -68,10 +61,11 @@ NN = {
     'activation': 'elu',  # *** impact factor ***
     'lr': 3e-4,  # *** impact factor ***
     'gamma': 1,
-    'clip': 0.2,
+    'clip': 0.2, # ppo clip
     'hidden_size': 64,
     'normalize_method': 'greenDRL',  # 'batch' (like stable baseline PPO) or 'no_normalize' or 'greenDRL' # *** impact factor ***
     'state_clip': True,
+    'state_clip_value': 2000,
     # ------------ for stable baseline like mini-batch update--------------
     'epoch': 1,
     'minibatch_sz': None

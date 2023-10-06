@@ -62,6 +62,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         self.timer_update_arrival_info_thread = Thread(target=self._threaded_update_arrival_queue,
                                                        args=(self.TIMER_INTERVAL_SEC,), daemon=True)
         self.timer_update_arrival_info_thread.start()
+        self.global_counter = 0
 
     def setup_logging(self):
         # file handler
@@ -97,7 +98,8 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
     def GetInvocationRoute(self, request: routing_pb2.GetInvocationRouteRequest, context):
         func_id_str: str = request.actionName
         activation_id: str = request.activationId
-        #logging.info(f"Received request --->{func_id_str}<---, activationId: {activation_id}")
+        self.global_counter +=1
+        logging.info(f"Received request ----->{func_id_str}, activationId: {activation_id}, globalCount:{self.global_counter}")
         assert "invokerHealthTestAction" != func_id_str[:23]
         # assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:

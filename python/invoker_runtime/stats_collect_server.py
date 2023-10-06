@@ -59,7 +59,7 @@ class StatService(rpyc.Service):
 
     def exposed_get_container_ids(self):
         try:
-            out = check_output(["docker", "ps", "--format", "{{.ID}} {{.Image}}", "--no-trunc"])
+            out = check_output(["docker", "ps", "--format", "{{.ID}} {{.Image}} {{.Names}}", "--no-trunc"])
         except Exception as e:
             logging.error(f"Get container ids error: {e}")
             return None
@@ -67,7 +67,7 @@ class StatService(rpyc.Service):
         function_id_lst = []
         for line in out_list:
             line_arr = line.split()
-            if line_arr[1].decode()[:13] == 'whisk/invoker':
+            if line_arr[1].decode()[:13] == 'whisk/invoker' or line_arr[2].decode()[:7] =='invoker':
                 continue
             function_id_lst.append(line_arr[0].decode())
         return pickle.dumps(function_id_lst)

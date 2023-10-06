@@ -246,8 +246,8 @@ class PPO:
             logging.info(
                 f"\n\n============================>Begin Trajectory ({self.training_update_cnt}-{i}) Rollout<=================================")
             state, info = self.env.reset(
-                options={'workload_start': training_configs.workload_config['workload_line_start'],
-                         'random_start': training_configs.workload_config['random_start']})
+                options={'workload_start': config.workload_config['workload_line_start'],
+                         'random_start': config.workload_config['random_start']})
             for t in range(T):
                 actions, action_logprobs = self.select_action(state, self.stds)  # return is of Tensor type
                 self.buffers.states[t][i] = np.array(state).copy()
@@ -402,12 +402,12 @@ class PPO:
         res['reward_func_setting'] = training_configs.reward_setting
         res['NN'] = training_configs.NN
         res['slot_duration'] = training_configs.SLOT_DURATION_SECOND
-        res['workload_config'] = training_configs.workload_config
+        res['workload_config'] = config.workload_config
         res['params'] = training_configs.params
         res['select_func_params'] = training_configs.select_func_params
         res['select_func_weights'] = training_configs.select_func_weight
         res['func_spec'] = config.func_spec_dict
-        res['func_sla'] = config.workload_characteristics
+        #res['func_sla'] = config.workload_characteristics
         res['evaluate_config'] = training_configs.eval_config
         res['cluster_spec'] = config.cluster_spec_dict
         res['Config_Note'] = config.CONFIG_NOTE
