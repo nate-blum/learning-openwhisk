@@ -150,7 +150,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def releaseCores(corePin: String) = {
-    corePin.split(",") foreach (core => changeCoreLoad(Right(core), false))
+    corePin.split(",") foreach (core => {if (core.nonEmpty) changeCoreLoad(Right(core), false)})
   }
 
   def getContainerForDeletionWithPriority(action: ExecutableWhiskAction, pools: Map[ActorRef, ContainerData]): Option[(ActorRef, ContainerData)] = {
