@@ -2,11 +2,13 @@ import subprocess
 import urllib3
 urllib3.disable_warnings()
 from requests_futures.sessions import FuturesSession
+from concurrent.futures import ProcessPoolExecutor
+from requests import Session
 
 
 
 class OpenwhiskClient:
-    NUM_WORKER = 48
+    NUM_WORKER = 1000
     WSK_PATH = "/usr/local/bin/wsk"
 
     def __init__(self, wsk_path: str):
@@ -18,6 +20,7 @@ class OpenwhiskClient:
         self.base_gust_url = APIHOST + "/api/v1/web/guest/default/"
         #self.base_url = APIHOST + "/api/v1/namespaces/" + NAMESPACE + "/actions/"
         self.session = FuturesSession(max_workers=self.NUM_WORKER)
+        #self.session = FuturesSession(executor=ProcessPoolExecutor(max_workers=8), session=Session())
 
     def invoke_binary_data(self, action: str, data):
         self.session.post(url=self.base_gust_url + action, headers={"Content-Type": "image/jpeg"}, data=data,

@@ -67,7 +67,7 @@ class StatService(rpyc.Service):
         function_id_lst = []
         for line in out_list:
             line_arr = line.split()
-            if line_arr[1].decode()[:13] == 'whisk/invoker' or line_arr[2].decode()[:7] =='invoker':
+            if line_arr[1].decode()[:13] == 'whisk/invoker' or 'Health' in line_arr[2].decode(): # invokerHealthTest
                 continue
             function_id_lst.append(line_arr[0].decode())
         return pickle.dumps(function_id_lst)
@@ -76,6 +76,7 @@ class StatService(rpyc.Service):
         # return Immutable type to avoid Netref, if use netref not sure how the locking is gonna work, be on the safe side
         with self.update_lock:
             #return pickle.dumps(self.container_2_utilization)
+            # if there is item in the dict, then the utilization deque must not be empty
             return pickle.dumps({k:mean([i[0] for i in v]) for k, v in self.container_2_utilization.items()})
 
     def exposed_reset(self):

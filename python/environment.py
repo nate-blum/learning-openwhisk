@@ -733,7 +733,7 @@ class Cluster:
                         except KeyError:
                             logging.error(
                                 f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
-                            assert False
+                            #assert False
                 invk_2_warm = self.func_2_warminfo[func]
                 for invk, container_set in invk_2_warm.items():
                     if not container_set:
@@ -747,7 +747,7 @@ class Cluster:
                         except KeyError:
                             logging.error(
                                 f"No container utilization record for warm container ({contr}) of function {func} on invoker: {invk.id}")
-                            assert False
+                            #assert False
             for type, util_lst in utilization.items():
                 res[func][type] = mean(
                     util_lst)  # if type is in the dict there must be at least one element in the least
