@@ -1,17 +1,22 @@
-from sub_config import config_two_func_0406 as sub_config
-#from sub_config import config_two_func as sub_config
+#from sub_config import config_dummy_two_func_0406 as sub_config
+#from sub_config import config_two_func_0406 as sub_config
+from sub_config import config_two_func as sub_config
 #CONFIG_NOTE = "realWsk"
 CONFIG_NOTE = sub_config.CONFIG_NOTE
 #cluster_state_name = 'cluster_state'
 server_power_specs = sub_config.server_power_specs
+pdu_outlet_list = sub_config.pdu_outlets
 
 cluster_spec_dict = sub_config.cluster_spec_dict
 default_svr_type = sub_config.default_svr_type
 
 
-workload_characteristics = sub_config.workload_characteristics
+#workload_characteristics = sub_config.workload_characteristics
+workload_config = sub_config.workload_config
 
 func_spec_dict = sub_config.func_spec_dict
+
+
 
 # NOTE, this must match the get_obs method in the environment
 input_space_spec = {
