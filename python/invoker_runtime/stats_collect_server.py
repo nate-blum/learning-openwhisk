@@ -77,7 +77,7 @@ class StatService(rpyc.Service):
         with self.update_lock:
             #return pickle.dumps(self.container_2_utilization)
             # if there is item in the dict, then the utilization deque must not be empty
-            return pickle.dumps({k:mean([i[0] for i in v]) for k, v in self.container_2_utilization.items()})
+            return pickle.dumps({k:mean([i[0] for i in v]) for k, v in self.container_2_utilization.items()}) # the deque is size bounded
 
     def exposed_reset(self):
         with self.update_lock:

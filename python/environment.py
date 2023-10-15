@@ -647,7 +647,7 @@ class Cluster:
         select_func: list[str] = self.select_from_all_state(arrival_info.func_2_arrivalEma,
                                                             func_2_tail_latency)  # the parameter might be changed
         # Some (func, type) pair might not be in the default dict
-        # func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func)
+        func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func) # if no record for a type, default to zero
         nn_state = []
         cluster_state = []  # not tired to a specific function
         core_avg_pinned: list[
@@ -677,16 +677,16 @@ class Cluster:
                 func_state_vec.append(container_per_type_dict[type_][1])  # warming count
                 func_state_vec.append(
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
-                # container_util = func_2_containerUtilization[func_str][type_] if (
-                #             func_str in func_2_containerUtilization and type_ in
-                #             func_2_containerUtilization[func_str]) else 0
-                # func_state_vec.append(container_util)
+                container_util = func_2_containerUtilization[func_str][type_] if (
+                            func_str in func_2_containerUtilization and type_ in
+                            func_2_containerUtilization[func_str]) else 0
+                func_state_vec.append(container_util)
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
                     func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
                 _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}'] = container_per_type_dict[type_][0] + \
                                                                             container_per_type_dict[type_][2]
-                # _debug_dict_[func_str][f'container_util_{type_}'] = container_util
+                _debug_dict_[func_str][f'container_util_{type_}'] = container_util
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
@@ -731,6 +731,8 @@ class Cluster:
                         try:
                             utilization[invk.type].append(container_2_util[contr.id])
                         except KeyError:
+                            # NOTE, if exception happens, then the key will exist in the default dict with a default value
+                            # if no record, just do not use the container, neither use 0 to substitute
                             logging.error(
                                 f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
                             #assert False
@@ -750,7 +752,7 @@ class Cluster:
                             #assert False
             for type, util_lst in utilization.items():
                 res[func][type] = mean(
-                    util_lst)  # if type is in the dict there must be at least one element in the least
+                    util_lst) if util_lst else 0  # if type is in the dict, the util_lst might still be empty list
             logging.info(f"Container utilization for func \n{func} {utilization}")
         return res
 

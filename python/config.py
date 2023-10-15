@@ -1,6 +1,6 @@
 #from sub_config import config_dummy_two_func_0406 as sub_config
 #from sub_config import config_two_func_0406 as sub_config
-from sub_config import config_two_func as sub_config
+from sub_config import config_two_func as sub_config # xe and xs-06
 #CONFIG_NOTE = "realWsk"
 CONFIG_NOTE = sub_config.CONFIG_NOTE
 #cluster_state_name = 'cluster_state'
@@ -20,7 +20,8 @@ func_spec_dict = sub_config.func_spec_dict
 
 # NOTE, this must match the get_obs method in the environment
 input_space_spec = {
-    'func_state_dim': 6 + 4 * len(cluster_spec_dict),
+    'func_state_dim': 6 + 5 * len(cluster_spec_dict),
+    #'func_state_dim': 6 + 4 * len(cluster_spec_dict),
     'cluster_state_dim': 1 * len(cluster_spec_dict),
     'n_func': 2  # active function
 }

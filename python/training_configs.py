@@ -2,9 +2,9 @@ import os
 import config_local
 import config
 trace_root = config_local.trace_root_path
-from sub_config import config_two_func
+from sub_config import config_two_func as sub_config
 
-wandb_group_name = "DummyOpenWhiskTraining2Funcs"
+wandb_group_name = "Real2Funcs"
 
 SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
@@ -48,7 +48,7 @@ log_mode = 'warn'
 
 reward_setting = {
     'reward_func': 'ratio',  # ratio or naive
-    'latency_factor': 0.5,  # effective only when reward func is ratio, a value in (0,1)
+    'latency_factor': 0.6,  # effective only when reward func is ratio, a value in (0,1)
     # -------------------------------------------------
     # only for naive reward function
     'naive_pow_coeff': 10,
@@ -65,7 +65,7 @@ NN = {
     'hidden_size': 64,
     'normalize_method': 'greenDRL',  # 'batch' (like stable baseline PPO) or 'no_normalize' or 'greenDRL' # *** impact factor ***
     'state_clip': True,
-    'state_clip_value': 2000,
+    'state_clip_value': sub_config.state_clip_value,
     # ------------ for stable baseline like mini-batch update--------------
     'epoch': 1,
     'minibatch_sz': None
