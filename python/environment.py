@@ -545,7 +545,7 @@ class Cluster:
 
     # get the features of All function so that to choose the active working functions.
     def select_from_all_state(self, ema_dict: ScalarMap[str, float],
-                              func_2_tail_latency: dict[str, float]) -> Optional[list[str]]:
+                              func_2_tail_latency: dict[str, float]) -> list[str]:
         # NOTE,The ema_dict might not contain all the registered function, different from simulator, same for `func_2_tail_latency`
         # This method might change the input parameters
         for func in self.strId_2_funcs.keys():
@@ -563,8 +563,8 @@ class Cluster:
         for func, tail_latency in func_2_tail_latency.items():
             func_2_latencySlack[func] = self.func_2_sla[func] - tail_latency
 
-        if not MORE_THAN_2_FUNC:
-            return
+        if not MORE_THAN_2_FUNC: # the above code need to update some state, so the check is placed here
+            return [str_name for str_name in self.strId_2_funcs.keys()]
         func_2_score = {}
         latency_slack_ndarray = np.array(list(func_2_latencySlack.values()))
         latency_slack_mean = latency_slack_ndarray.mean()
