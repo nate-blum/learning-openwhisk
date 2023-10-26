@@ -679,7 +679,7 @@ class Cluster:
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
                 container_util = func_2_containerUtilization[func_str][type_] if (
                             func_str in func_2_containerUtilization and type_ in
-                            func_2_containerUtilization[func_str]) else 0
+                            func_2_containerUtilization[func_str]) else 0 # function must be in, type might not be in
                 func_state_vec.append(container_util)
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
@@ -732,8 +732,8 @@ class Cluster:
                             utilization[invk.type].append(container_2_util[contr.id])
                         except KeyError:
                             # NOTE, if exception happens, then the key will exist in the default dict with a default value
-                            # if no record, just do not use the container, neither use 0 to substitute
-                            logging.error(
+                            # if no record, just do not use the container, neither use 0 to substitute; the list will be created by default on exception
+                            logging.warning(
                                 f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
                             #assert False
                 invk_2_warm = self.func_2_warminfo[func]
@@ -747,7 +747,7 @@ class Cluster:
                         try:
                             utilization[invk.type].append(container_2_util[contr.id])
                         except KeyError:
-                            logging.error(
+                            logging.warning(
                                 f"No container utilization record for warm container ({contr}) of function {func} on invoker: {invk.id}")
                             #assert False
             for type, util_lst in utilization.items():

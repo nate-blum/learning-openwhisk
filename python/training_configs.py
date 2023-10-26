@@ -72,18 +72,18 @@ NN = {
 }
 # for define features and related
 params = {
-    'util_update_interval': 1000,  # 1 second, note this should be a constant
-    'util_q_size': 10,  # this should match the slot duration, at least all records in a slot (10s)
-    # use the latency information for invocations within this second to compute the state feature
-    'latency_record_range_cared': 2000, # [********>this affect the features, consider this with slot duration<********]
-    'latency_record_time_range_limit': 10000,  # 10 second,latency & execution time queue size limit
-    'arrival_q_time_range_limit': 150000,  # 2.5 min
-    'relax_deletion_requirement': 0,  # no relax
-    'Discard_Invocation_SlaViolation_Factor': 3,
-    # if the value is 3, meaning the discard invocation has 3 * sla latency
-    'consider_core_interference': 1,  # whether allowing multiple containers pinned to the same cores
-    'consider_container_pinning_per_core_limit': 1,  # will be converted to boolean
-    'max_pinned_container_per_core': 2  # should be used with the previous together
+    # 'util_update_interval': 1000,  # 1 second, note this should be a constant
+    # 'util_q_size': 10,  # this should match the slot duration, at least all records in a slot (10s)
+    # # use the latency information for invocations within this second to compute the state feature
+    # 'latency_record_range_cared': 2000, # [********>this affect the features, consider this with slot duration<********]
+    # 'latency_record_time_range_limit': 10000,  # 10 second,latency & execution time queue size limit
+    # 'arrival_q_time_range_limit': 150000,  # 2.5 min
+    # 'relax_deletion_requirement': 0,  # no relax
+    # 'Discard_Invocation_SlaViolation_Factor': 3,
+    # # if the value is 3, meaning the discard invocation has 3 * sla latency
+    # 'consider_core_interference': 1,  # whether allowing multiple containers pinned to the same cores
+    'consider_container_pinning_per_core_limit': 1  # will be converted to boolean
+    # 'max_pinned_container_per_core': 2  # should be used with the previous together
 }
 
 eval_config = {
@@ -93,3 +93,5 @@ eval_config = {
     'log_mode': 'warn',
     'eval_every_n_update': 2
 }
+
+checkpoint_freq_in_steps = 10

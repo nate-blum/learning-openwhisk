@@ -344,7 +344,7 @@ class PPO:
             logging.info(
                 "[{}] Training iteration {} done in {} second".format(self.time_stamp, self.training_update_cnt,
                                                                       time.time() - t))
-            if self.training_update_cnt % 500 == 0 and self.training_update_cnt != 0:
+            if self.training_update_cnt % training_configs.checkpoint_freq_in_steps == 0 and self.training_update_cnt != 0:
                 torch.save(self.policy.state_dict(),
                            os.path.join(config_local.torch_model_save_dir,
                                         '{}_{}.pth'.format(self.time_stamp, self.training_update_cnt)))
