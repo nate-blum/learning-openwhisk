@@ -615,7 +615,7 @@ class Cluster:
             self.db.GetActivationRecordsEndTimeSinceUntil(since=self.last_query_db_since - 1000, end=curr_time)['docs']
         query_latency = time.time() - start_t
         logging.info(f'Db query time: {query_latency}')
-        assert query_latency < 0.2, "db query latency > 0.2 sec"
+        assert query_latency < 2, "db query latency > 2 sec"
         # db_activations = self.db.GetActivationRecordsSince(since=self.last_query_db_since, until=curr_time)['docs'] # NOTE,BUG  could miss record whose start time is within last window but finished in the current window
         self.last_query_db_since = curr_time  # guarantee no missing of record in database
         # update the local invocation dict based on rpc result

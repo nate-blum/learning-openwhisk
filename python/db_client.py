@@ -187,7 +187,7 @@ if __name__ == '__main__':
     #db.create_index(['end'])
     db_python = CouchDB_Py()
     t = time.time()
-    res = db.GetActivationRecordsEndTimeSinceUntil((int(time.time()) - 3600 * 2) * 1000, int(time.time()) * 1000)
+    res = db.GetActivationRecordsEndTimeSinceUntil((int(time.time()) - 3600 * 72) * 1000, int(time.time()) * 1000)
     #res = db_python.find((int(time.time()) - 3600 * 60) * 1000, 1_000_000)
     t_end = time.time()
     count = 0

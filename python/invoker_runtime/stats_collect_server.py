@@ -36,12 +36,17 @@ class StatService(rpyc.Service):
                 if len(line_arr) < 2:
                     logging.error(f"Line array size  < 2, {line}")
                     continue
+                try:
+                    util_val = float(line_arr[1].rstrip('%')) / 100
+                except ValueError:
+                    logging.error("Value Error while parsing utilization record")
+                    continue
                 t = time.time()
                 with self.update_lock:
                     if container_id not in self.container_2_utilization:
                         self.container_2_utilization[container_id] = deque(maxlen=self.RECORD_NUM)
                     # get rid of the ANSI terminal control sequenc [7:]
-                    self.container_2_utilization[container_id].append((float(line_arr[1].rstrip('%')) / 100, t))
+                    self.container_2_utilization[container_id].append((util_val, t))
                     # print(time.time(),line.strip()[7:],flush=True)
 
     def _thread_del_inactive_container(self):
