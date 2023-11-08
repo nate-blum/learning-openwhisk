@@ -112,6 +112,7 @@ class Reward:
         for func, latency_lst in func_2_latencyList.items():
             if not latency_lst:
                 continue
+            logging.info(f"\n----->Latency_lst for {func}: {latency_lst} (include Q)")
             p99 = np.percentile(latency_lst, SLA_PERCENTAGE)
             func_2_tail_latency[func] = p99
             if p99 < func_2_sla[func]:

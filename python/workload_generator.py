@@ -102,7 +102,7 @@ class WorkloadGenerator:
             case _:
                 self.ow_client.invoke_common(action=func_name)
         self.global_counter+=1
-        logging.info(f"Sending request----------->: {func_name}, globalCount: {self.global_counter}")
+        #logging.info(f"Sending request----------->: {func_name}, globalCount: {self.global_counter}")
         assert self.state == "start"
         self.line_pointer += 1
         self.last_req_t = time()

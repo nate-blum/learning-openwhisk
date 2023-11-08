@@ -89,7 +89,9 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
                 lst_count = self.func_2_containerSumList[func_id_str]
                 lst_invokerId = self.func_2_invokerId[func_id_str]
                 total = self.func_2_containerCountSum[func_id_str]
-                return choice(lst_invokerId, p=np.array(lst_count) / total)
+                res_invoker = choice(lst_invokerId, p=np.array(lst_count) / total)
+                #logging.info(f"Select invoker {res_invoker} to dispatch for {func_id_str}")
+                return res_invoker
         except (KeyError, ValueError) as e:  # no corresponding container or no container at all, cold start
             response: GetRoutingColdStartResponse = self.cluster_update_stub.GetRoutingColdStart(
                 GetRoutingColdStartRequest(func_str=func_id_str))
@@ -99,7 +101,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         func_id_str: str = request.actionName
         activation_id: str = request.activationId
         self.global_counter +=1
-        logging.info(f"Received request ----->{func_id_str}, activationId: {activation_id}, globalCount:{self.global_counter}")
+        #logging.info(f"Received request ----->{func_id_str}, activationId: {activation_id}, globalCount:{self.global_counter}")
         assert "invokerHealthTestAction" != func_id_str[:23]
         # assert activation_id not in self.func_2_activationDict[func_id_str]
         with self.activation_dict_lock:
@@ -108,6 +110,7 @@ class WskRoutingService(routing_pb2_grpc.RoutingServiceServicer):
         with self.lock_arrival_q:
             self.func_2_arrivalQueue[func_id_str].appendleft(t)  # NOTE, should be thread-safe
         res: int = self._select_invoker_to_dispatch(func_id_str)
+        logging.info(f"Select invoker {res} to dispatch for {func_id_str}, {activation_id}")
         with self.lock_routing_res:
             self.routing_res_dict[activation_id] = res
         #logging.info(f"routingRes for {activation_id} ==========> invoker {res}")
