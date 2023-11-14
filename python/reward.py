@@ -39,6 +39,9 @@ class Reward:
         rewards['all'] = rewards['sla'] + rewards['power']
         return rewards, func_2_tail_latency, func_2_invoker2latencyList
 
+    def conver_unix_time_ms_to_str(self, unixtime_ms):
+        return datetime.fromtimestamp(unixtime_ms / 1000.0).strftime('%H:%M:%S.%f')
+
     # TODO, make the latency more accurate
     def compute_latency_reward_ratio_based_wsk(self, db_activations: list,
                                                func_2_invocation2Arrival: dict[str, dict[str, int]],
@@ -48,6 +51,8 @@ class Reward:
         func_2_invoker2Latency: defaultdict[str, defaultdict[int, list]] = defaultdict(
             lambda: defaultdict(list))
         func_2_latencyList: defaultdict[str, list] = defaultdict(list)  # {function: [...latencies...]}
+        func_2_latencyListVerbose: defaultdict[str, list] = defaultdict(
+            list)  # {function: [...(startTime,latencie)...]}
         # <------------process latency record in the database----------------->
         _validation_early_arrival_db_record = defaultdict(
             lambda: defaultdict(lambda: int(1e20)))  # dummy max {func:{invoker: time}}
@@ -75,6 +80,7 @@ class Reward:
             arrival_time_ms = round(arrival_time / 1_000_000)  # now it is millisecond
             latency = activation['end'] - arrival_time_ms  # using the arrival at agent as "arrivalTime"
             func_2_latencyList[func_name].append(latency)
+            func_2_latencyListVerbose[func_name].append((self.conver_unix_time_ms_to_str(arrival_time_ms), latency))
             try:
                 invoker_id_int = activation['instanceId']
                 func_2_invoker2Latency[func_name][invoker_id_int].append(latency)
@@ -102,17 +108,24 @@ class Reward:
         # logging.info(
         #     f"func_2_invocation2Arrival # before: {num_local_invocation_record} # after:{num_local_invocation_record_after}, # db queried: {num_db_record}")
         # <------------include activation that are still in the local activation dict (in the queue)----------->
+        func_2_boundaryCounter: defaultdict[str, int] = defaultdict(int)  # {func: # of invocation queued or unfinished}
         curr_time = time.time_ns()
         for func, invocation2Arrival in func_2_invocation2Arrival.items():
             for invocation, arrivalTime in invocation2Arrival.items():
-                func_2_latencyList[func].append(
-                    round((curr_time - arrivalTime) / 1_000_000))  # convert nanosecond to millisecond
+                latency_tmp = round((curr_time - arrivalTime) / 1_000_000)
+                func_2_latencyList[func].append(latency_tmp)  # convert nanosecond to millisecond
+                func_2_latencyListVerbose[func].append(
+                    (self.conver_unix_time_ms_to_str(arrivalTime / 1_000_000), latency_tmp))
+                func_2_boundaryCounter[func] += 1
         preserve_ratios = []
         func_2_tail_latency: dict[str, float] = {}
         for func, latency_lst in func_2_latencyList.items():
             if not latency_lst:
                 continue
-            logging.info(f"\n----->Latency_lst for {func}: {latency_lst} (include Q)")
+            num_onthefly = func_2_boundaryCounter[func]
+            latency_lst_verbose = func_2_latencyListVerbose[func]
+            logging.info(
+                f"\n----->Latency_lst for {func}: {latency_lst_verbose[:len(latency_lst_verbose) - num_onthefly]} (Finished), {latency_lst_verbose[(len(latency_lst_verbose) - num_onthefly):]} (Queued)")
             p99 = np.percentile(latency_lst, SLA_PERCENTAGE)
             func_2_tail_latency[func] = p99
             if p99 < func_2_sla[func]:

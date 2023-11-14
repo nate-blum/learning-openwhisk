@@ -22,15 +22,15 @@ class StatService(rpyc.Service):
         self.del_inactive_container_thread = threading.Thread(target=self._thread_del_inactive_container, daemon=True)
         self.reading_thread.start()
         self.del_inactive_container_thread.start()
-        self.sub_process = None
+        #self.sub_process = None
         print("Docker stats collector server started", flush=True)
 
     def _threaded_pull_container_stat(self):
-        self.sub_process = subprocess.Popen(["docker", "stats", "--format", "{{.ID}} {{.CPUPerc}}", "--no-trunc"],
+        sub_process = subprocess.Popen(["docker", "stats", "--format", "{{.ID}} {{.CPUPerc}}", "--no-trunc"],
                                             stdout=subprocess.PIPE, text=True)
-        print("Collecting Subprocess id:", self.sub_process.pid, flush=True)
+        print("Collecting Subprocess id:", sub_process.pid, flush=True)
         while True:
-            for line in self.sub_process.stdout:
+            for line in sub_process.stdout:
                 line_arr = line.strip().split()
                 container_id = line_arr[0][7:] if line_arr[0][:7] =="\x1b[2J\x1b[H" else line_arr[0]
                 if len(line_arr) < 2:
