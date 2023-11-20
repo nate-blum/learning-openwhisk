@@ -6,6 +6,8 @@ import time
 from training_configs import SLA_PERCENTAGE
 from invocation_store import InvocationStore
 from datetime import datetime
+import copy
+
 
 
 class Reward:
@@ -16,6 +18,9 @@ class Reward:
         self.activation_curr_round: set[str] = set()
         self.activation_last_round: set[str] = set()
         self.abnormal_record = []
+        self.func_2_invoker2LatencyAll = defaultdict(lambda : defaultdict(list)) # the first get_obs will use this empty
+        self.func_2_invoker2UnfinishedCnt = defaultdict(lambda : defaultdict(int))
+
 
     def reset(self):
         self.abnormal_record = []
@@ -41,6 +46,7 @@ class Reward:
 
     def conver_unix_time_ms_to_str(self, unixtime_ms):
         return datetime.fromtimestamp(unixtime_ms / 1000.0).strftime('%H:%M:%S.%f')
+
 
     # TODO, make the latency more accurate
     def compute_latency_reward_ratio_based_wsk(self, db_activations: list,
@@ -109,6 +115,8 @@ class Reward:
         #     f"func_2_invocation2Arrival # before: {num_local_invocation_record} # after:{num_local_invocation_record_after}, # db queried: {num_db_record}")
         # <------------include activation that are still in the local activation dict (in the queue)----------->
         func_2_boundaryCounter: defaultdict[str, int] = defaultdict(int)  # {func: # of invocation queued or unfinished}
+        self.func_2_invoker2LatencyAll = copy.deepcopy(func_2_invoker2Latency)  # make a deep copy
+        self.func_2_invoker2UnfinishedCnt: defaultdict[str, defaultdict[int, int]] = defaultdict(lambda : defaultdict(int)) # record unfinished invocations
         curr_time = time.time_ns()
         for func, invocation2Arrival in func_2_invocation2Arrival.items():
             for invocation, arrivalTime in invocation2Arrival.items():
@@ -117,6 +125,13 @@ class Reward:
                 func_2_latencyListVerbose[func].append(
                     (self.conver_unix_time_ms_to_str(arrivalTime / 1_000_000), latency_tmp))
                 func_2_boundaryCounter[func] += 1
+                try:
+                    invk_id = activation_2_invoker[invocation]
+                    self.func_2_invoker2LatencyAll[func][invk_id].append(latency_tmp) # include queued
+                    self.func_2_invoker2UnfinishedCnt[func][invk_id]+=1
+                except KeyError:
+                    # it's possible to have no invoker id info for an invocation, but case should be rare
+                    logging.warning(f"Routing result (InvokerId) is not available for invocation {invocation}")
         preserve_ratios = []
         func_2_tail_latency: dict[str, float] = {}
         for func, latency_lst in func_2_latencyList.items():

@@ -81,6 +81,8 @@ INVOKER_PY_RPC_PORT = config_local.invoker_py_rpc_port
 INIT_WARM_CONTAINER_COUNT_PER_TYPE = training_configs.initialize_env['warm_cnt_per_type']
 # ---
 MORE_THAN_2_FUNC = training_configs.select_func_params['more_than_2_funcs']
+#---
+SLA_PERCENTAGE = training_configs.SLA_PERCENTAGE
 
 
 class Stats:
@@ -300,7 +302,7 @@ class Cluster:
                 container_list = invoker.rpyc_get_container_ids()
                 if not container_list:
                     break
-                #print("container list from docker runtime==>", container_list)
+                # print("container list from docker runtime==>", container_list)
                 time.sleep(0.2)
                 if time.time() - start_t > 300:
                     assert False, "Timeout while waiting reset result"
@@ -376,7 +378,7 @@ class Cluster:
             v.clear()
         self.stats.reset_coldstart()  # reset cold start count, in lock
         self.reward.reset()
-        #time.sleep(4)  # wait the state of container to settle
+        # time.sleep(4)  # wait the state of container to settle
         self.block_until_reset_invoker_finish()
         self.active_func_ids = self.all_func_ids[:self.nn_func_input_count]
         if MORE_THAN_2_FUNC:
@@ -458,6 +460,8 @@ class Cluster:
                         host_invoker.rpc_delete_container(cand.id, self.strId_2_funcs[func_id_str].name)
                         logging.info("Deleting container {} on invoker {}".format(cand.id, host_invoker.id))
                         return cand.id  # make sure only delete one
+            else:
+                logging.info(f"Attempt to delete a container failed for {func_id_str} on type {type}")
         return None  #
 
     def add_container_with_multiple_pinning(self, action: Action, func: Func):
@@ -523,12 +527,13 @@ class Cluster:
         state = self.get_obs(func_2_tail_latency,
                              func_2_invoker2latencyList)  # TODO: Make sure it is okay to put this method after reward method
         # logging.info(f"Get obs time: {time.time()-t_reward_done}")
-        self.stats.reset_coldstart() #BUGFIX, you need reset on every step, what about others
+        self.stats.reset_coldstart()  # BUGFIX, you need reset on every step, what about others
         logging.info(
             f'\n[----------Reward {self.curr_step}----------->]\n{reward_dict}\n      func_2_tail_latency (contain queued)--->\n{func_2_tail_latency}\n     fun_2_invoker2LatencyList (not containing queued)--->\n{func_2_invoker2latencyList}')
         logging.info(f"Abnormal record:\n {self.reward.abnormal_record}")
         logging.info(f"------------->Invoker state:\n{self.id_2_invoker}")
-        logging.info(f">------------------------------------Step {self.curr_step} Done----------------------------------------------<")
+        logging.info(
+            f">------------------------------------Step {self.curr_step} Done----------------------------------------------<")
         if is_last:
             self.check_consistency_cluster_state()
         self.curr_step += 1
@@ -563,7 +568,7 @@ class Cluster:
         for func, tail_latency in func_2_tail_latency.items():
             func_2_latencySlack[func] = self.func_2_sla[func] - tail_latency
 
-        if not MORE_THAN_2_FUNC: # the above code need to update some state, so the check is placed here
+        if not MORE_THAN_2_FUNC:  # the above code need to update some state, so the check is placed here
             return [str_name for str_name in self.strId_2_funcs.keys()]
         func_2_score = {}
         latency_slack_ndarray = np.array(list(func_2_latencySlack.values()))
@@ -636,9 +641,19 @@ class Cluster:
                 ):
         _debug_dict_ = defaultdict(dict)  # temporary data structure for debug printing
         func_2_type2latencyList: defaultdict[str, defaultdict[str, list]] = defaultdict(lambda: defaultdict(list))
+        func_2_type2latencyListAll: defaultdict[str, defaultdict[str, list]] = defaultdict(
+            lambda: defaultdict(list))  # include queued
+        func_2_type2Unfinishedcount: defaultdict[str, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
         for func_name, invoker2LatencyList in func_2_invoker2latencyList.items():
             for invoker_id, latency_lst in invoker2LatencyList.items():
                 func_2_type2latencyList[func_name][self.id_2_invoker[invoker_id].type].extend(latency_lst)
+        for func_name, invoker2LatencyListAll in self.reward.func_2_invoker2LatencyAll.items():  # include queued
+            for invoker_id, latency_lst in invoker2LatencyListAll.items():
+                func_2_type2latencyListAll[func_name][self.id_2_invoker[invoker_id].type].extend(latency_lst)
+        for func_name, invoker_unfinished_cnt in self.reward.func_2_invoker2UnfinishedCnt.items():
+            for invoker_id, cnt in invoker_unfinished_cnt.items():
+                func_2_type2Unfinishedcount[func_name][self.id_2_invoker[invoker_id].type] += cnt
+
         arrival_info: routing_pb2.GetArrivalInfoResponse = self.routing_stub.GetArrivalInfo(routing_pb2.EmptyRequest())
         # NOTE, ** the tail latency includes record in the waiting queue, which is different from the simulator which only has
         # finished invocation record. The period during which to calculate the tail latency is also different: this has all the
@@ -647,7 +662,8 @@ class Cluster:
         select_func: list[str] = self.select_from_all_state(arrival_info.func_2_arrivalEma,
                                                             func_2_tail_latency)  # the parameter might be changed
         # Some (func, type) pair might not be in the default dict
-        func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(select_func) # if no record for a type, default to zero
+        func_2_containerUtilization = self.get_avg_busy_container_utilization_per_type(
+            select_func)  # if no record for a type, default to zero
         nn_state = []
         cluster_state = []  # not tired to a specific function
         core_avg_pinned: list[
@@ -670,16 +686,20 @@ class Cluster:
 
             container_per_type_dict = self._state_get_num_container_per_type(func_str)
             for type_ in self.server_types:
-                type_tail_latency = np.percentile(func_2_type2latencyList[func_str][type_], 95) if \
-                    func_2_type2latencyList[func_str][type_] else 0
+                type_tail_latency = np.percentile(func_2_type2latencyList[func_str][type_], SLA_PERCENTAGE) if \
+                    func_2_type2latencyList[func_str][type_] else 0  # does not include queued
+                type_tail_latency_include_queued = np.percentile(func_2_type2latencyListAll[func_str][type_], SLA_PERCENTAGE) if \
+                func_2_type2latencyListAll[func_str][type_] else 0
                 func_state_vec.append(
                     self.func_2_sla[func_str] - type_tail_latency)  # TODO, rethink, 95 or 99, including buffered or not
+                func_state_vec.append(self.func_2_sla[func_str] - type_tail_latency_include_queued)
+                func_state_vec.append(func_2_type2Unfinishedcount[func_str][type_]) # num of invocation dispatched but not finished
                 func_state_vec.append(container_per_type_dict[type_][1])  # warming count
                 func_state_vec.append(
                     container_per_type_dict[type_][0] + container_per_type_dict[type_][2])  # warm + busy
                 container_util = func_2_containerUtilization[func_str][type_] if (
-                            func_str in func_2_containerUtilization and type_ in
-                            func_2_containerUtilization[func_str]) else 0 # function must be in, type might not be in
+                        func_str in func_2_containerUtilization and type_ in
+                        func_2_containerUtilization[func_str]) else 0  # function must be in, type might not be in
                 func_state_vec.append(container_util)
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
@@ -687,6 +707,9 @@ class Cluster:
                 _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}'] = container_per_type_dict[type_][0] + \
                                                                             container_per_type_dict[type_][2]
                 _debug_dict_[func_str][f'container_util_{type_}'] = container_util
+                _debug_dict_[func_str][f'buffered_cnt_{type_}'] = func_2_type2Unfinishedcount[func_str][type_]
+                _debug_dict_[func_str][f'latency_tail_include_queued_{type_}'] = type_tail_latency_include_queued
+
             nn_state.append(func_state_vec)
         nn_state.append(cluster_state)
         nn_state = np.concatenate(nn_state, dtype=np.float32).flatten()
@@ -735,7 +758,7 @@ class Cluster:
                             # if no record, just do not use the container, neither use 0 to substitute; the list will be created by default on exception
                             logging.warning(
                                 f"No container utilization record for busy container {contr} of function {func} on invoker: {invk.id}")
-                            #assert False
+                            # assert False
                 invk_2_warm = self.func_2_warminfo[func]
                 for invk, container_set in invk_2_warm.items():
                     if not container_set:
@@ -749,7 +772,7 @@ class Cluster:
                         except KeyError:
                             logging.warning(
                                 f"No container utilization record for warm container ({contr}) of function {func} on invoker: {invk.id}")
-                            #assert False
+                            # assert False
             for type, util_lst in utilization.items():
                 res[func][type] = mean(
                     util_lst) if util_lst else 0  # if type is in the dict, the util_lst might still be empty list

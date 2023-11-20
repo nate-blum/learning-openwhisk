@@ -20,7 +20,7 @@ func_spec_dict = sub_config.func_spec_dict
 
 # NOTE, this must match the get_obs method in the environment
 input_space_spec = {
-    'func_state_dim': 6 + 5 * len(cluster_spec_dict),
+    'func_state_dim': 6 + 7 * len(cluster_spec_dict),
     #'func_state_dim': 6 + 4 * len(cluster_spec_dict),
     'cluster_state_dim': 1 * len(cluster_spec_dict),
     'n_func': 2  # active function
