@@ -54,6 +54,9 @@ class CouchDB_Py:
     def delete(self, doc):
         self.db.delete(doc)
 
+    def delete_activation_db(self):
+        self.server.delete('whisk_local_activations')
+        logging.info("Successfully deleted whisk_local_activation")
 
 class DB:
     DB_CONFIG_FILE = config_local.db_config_file  #
@@ -186,6 +189,7 @@ if __name__ == '__main__':
     db = DB()
     #db.create_index(['end'])
     db_python = CouchDB_Py()
+    #db_python.delete_activation_db()
     t = time.time()
     res = db.GetActivationRecordsEndTimeSinceUntil((int(time.time()) - 3600 * 72) * 1000, int(time.time()) * 1000)
     #res = db_python.find((int(time.time()) - 3600 * 60) * 1000, 1_000_000)

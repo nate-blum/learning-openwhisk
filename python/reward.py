@@ -9,7 +9,6 @@ from datetime import datetime
 import copy
 
 
-
 class Reward:
     def __init__(self, cluster):
         self.cluster = cluster
@@ -18,12 +17,13 @@ class Reward:
         self.activation_curr_round: set[str] = set()
         self.activation_last_round: set[str] = set()
         self.abnormal_record = []
-        self.func_2_invoker2LatencyAll = defaultdict(lambda : defaultdict(list)) # the first get_obs will use this empty
-        self.func_2_invoker2UnfinishedCnt = defaultdict(lambda : defaultdict(int))
-
+        self.func_2_invoker2LatencyAll = defaultdict(lambda: defaultdict(list))  # the first get_obs will use this empty
+        self.func_2_invoker2UnfinishedCnt = defaultdict(lambda: defaultdict(int))
 
     def reset(self):
         self.abnormal_record = []
+        self.func_2_invoker2LatencyAll = defaultdict(lambda: defaultdict(list))
+        self.func_2_invoker2UnfinishedCnt = defaultdict(lambda: defaultdict(int))
 
     def compute_reward_using_overall_stat(self, db_activations: list,
                                           func_2_invocation2Arrival: dict[str, dict[str, int]],
@@ -46,7 +46,6 @@ class Reward:
 
     def conver_unix_time_ms_to_str(self, unixtime_ms):
         return datetime.fromtimestamp(unixtime_ms / 1000.0).strftime('%H:%M:%S.%f')
-
 
     # TODO, make the latency more accurate
     def compute_latency_reward_ratio_based_wsk(self, db_activations: list,
@@ -86,15 +85,16 @@ class Reward:
             arrival_time_ms = round(arrival_time / 1_000_000)  # now it is millisecond
             latency = activation['end'] - arrival_time_ms  # using the arrival at agent as "arrivalTime"
             func_2_latencyList[func_name].append(latency)
-            func_2_latencyListVerbose[func_name].append((self.conver_unix_time_ms_to_str(arrival_time_ms), latency))
             try:
                 invoker_id_int = activation['instanceId']
                 func_2_invoker2Latency[func_name][invoker_id_int].append(latency)
             except KeyError:
                 invoker_id_int = activation_2_invoker[activation_id]
                 func_2_invoker2Latency[func_name][invoker_id_int].append(latency)
-                # logging.warning(
-                #     f"Missing instanceId info in db for: {activation_id} on {activation_2_invoker[activation_id]}")
+            func_2_latencyListVerbose[func_name].append(
+                (self.conver_unix_time_ms_to_str(arrival_time_ms), latency, 'xe' if invoker_id_int == 0 else 'xs')) # hard-coded
+            # logging.warning(
+            #     f"Missing instanceId info in db for: {activation_id} on {activation_2_invoker[activation_id]}")
             # if activation['end'] - latency < _validation_early_arrival_db_record[func_name][invoker_id_int]:
             #     _validation_early_arrival_db_record[func_name][invoker_id_int] = activation['end'] - latency
             if arrival_time_ms < _validation_early_arrival_db_record[func_name][invoker_id_int]:
@@ -116,22 +116,27 @@ class Reward:
         # <------------include activation that are still in the local activation dict (in the queue)----------->
         func_2_boundaryCounter: defaultdict[str, int] = defaultdict(int)  # {func: # of invocation queued or unfinished}
         self.func_2_invoker2LatencyAll = copy.deepcopy(func_2_invoker2Latency)  # make a deep copy
-        self.func_2_invoker2UnfinishedCnt: defaultdict[str, defaultdict[int, int]] = defaultdict(lambda : defaultdict(int)) # record unfinished invocations
+        self.func_2_invoker2UnfinishedCnt: defaultdict[str, defaultdict[int, int]] = defaultdict(
+            lambda: defaultdict(int))  # record unfinished invocations
         curr_time = time.time_ns()
         for func, invocation2Arrival in func_2_invocation2Arrival.items():
             for invocation, arrivalTime in invocation2Arrival.items():
                 latency_tmp = round((curr_time - arrivalTime) / 1_000_000)
                 func_2_latencyList[func].append(latency_tmp)  # convert nanosecond to millisecond
-                func_2_latencyListVerbose[func].append(
-                    (self.conver_unix_time_ms_to_str(arrivalTime / 1_000_000), latency_tmp))
                 func_2_boundaryCounter[func] += 1
                 try:
                     invk_id = activation_2_invoker[invocation]
-                    self.func_2_invoker2LatencyAll[func][invk_id].append(latency_tmp) # include queued
-                    self.func_2_invoker2UnfinishedCnt[func][invk_id]+=1
+                    self.func_2_invoker2LatencyAll[func][invk_id].append(latency_tmp)  # include queued
+                    func_2_latencyListVerbose[func].append((self.conver_unix_time_ms_to_str(arrivalTime / 1_000_000),
+                                                            latency_tmp, 'xe' if invk_id == 0 else 'xs', invocation)) # hardcoded
+                    self.func_2_invoker2UnfinishedCnt[func][invk_id] += 1
                 except KeyError:
                     # it's possible to have no invoker id info for an invocation, but case should be rare
                     logging.warning(f"Routing result (InvokerId) is not available for invocation {invocation}")
+                    func_2_latencyListVerbose[func].append(
+                        (self.conver_unix_time_ms_to_str(arrivalTime / 1_000_000), latency_tmp, 'NA', invocation))
+
+
         preserve_ratios = []
         func_2_tail_latency: dict[str, float] = {}
         for func, latency_lst in func_2_latencyList.items():

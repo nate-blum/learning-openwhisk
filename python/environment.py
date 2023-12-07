@@ -704,8 +704,11 @@ class Cluster:
                 # TODO, rethink the scale and cap's effect, rethink whey this feature is important
                 func_state_vec.append(
                     func.sla - func.invokerType_2_referenceExecTime[type_])  # sla-referenceExecTime_ThisType
-                _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}'] = container_per_type_dict[type_][0] + \
-                                                                            container_per_type_dict[type_][2]
+                # _debug_dict_[func_str][f'containerCnt_Warm+busy_{type_}'] = container_per_type_dict[type_][0] + \
+                #                                                             container_per_type_dict[type_][2]
+                _debug_dict_[func_str][f'containerCnt_Warm_{type_}'] = container_per_type_dict[type_][0]
+                _debug_dict_[func_str][f'containerCnt_Warming_{type_}'] = container_per_type_dict[type_][1]
+                _debug_dict_[func_str][f'containerCnt_Busy_{type_}'] = container_per_type_dict[type_][2]
                 _debug_dict_[func_str][f'container_util_{type_}'] = container_util
                 _debug_dict_[func_str][f'buffered_cnt_{type_}'] = func_2_type2Unfinishedcount[func_str][type_]
                 _debug_dict_[func_str][f'latency_tail_include_queued_{type_}'] = type_tail_latency_include_queued

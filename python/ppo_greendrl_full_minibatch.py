@@ -443,11 +443,12 @@ if __name__ == '__main__':
     #                    nn_func_input_count=config.input_space_spec['n_func'])
     env = Cluster(cluster_spec_dict=config.cluster_spec_dict, func_spec_dict=config.func_spec_dict,
                   nn_func_input_count=config.input_space_spec['n_func'])
-    ppo = PPO(env=env, num_evn=1,
+    ppo = PPO(env=env, num_evn=training_configs.num_envs, # bug fix
               func_state_dim=config.input_space_spec['func_state_dim'],
               num_func=config.input_space_spec['n_func'],
               cluster_state_dim=config.input_space_spec['cluster_state_dim'],
-              action_dim=4, hidden_size=training_configs.NN['hidden_size'],
+              action_dim=4,  # NOTE, hardcoded, be careful
+              hidden_size=training_configs.NN['hidden_size'],
               activation=training_configs.NN['activation'], clip=training_configs.NN['clip'],
               gamma=training_configs.NN['gamma'],
               trajectory_len=training_configs.trajectory_len, init_stds=training_configs.init_std,
