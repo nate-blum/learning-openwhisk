@@ -884,6 +884,7 @@ class ContainerProxy(factory: (TransactionId,
    */
   def initializeAndRun(container: Container, job: Run, reschedule: Boolean = false)(
     implicit tid: TransactionId): Future[WhiskActivation] = {
+    logging.info(this, s"JobExecutionStart for ${job.action.name}, ${job.msg.activationId}")
     val actionTimeout = job.action.limits.timeout.duration
     val unlockedArgs =
       ContainerProxy.unlockArguments(job.msg.content, job.msg.lockedArgs, ParameterEncryption.singleton)
@@ -947,6 +948,7 @@ class ContainerProxy(factory: (TransactionId,
             reschedule)(job.msg.transid)
           .map {
             case (runInterval, response) =>
+              //logging.info(this, s"JobExecutionDone ${job.action.name}, ${job.msg.activationId}")
               val initRunInterval = initInterval
                 .map(i => Interval(runInterval.start.minusMillis(i.duration.toMillis), runInterval.end))
                 .getOrElse(runInterval)
@@ -960,8 +962,10 @@ class ContainerProxy(factory: (TransactionId,
       }
       .recoverWith {
         case h: ContainerHealthError =>
+          logging.error(this, s"JobExecutionError, containerHealthError ${job.action.name}, ${job.msg.activationId}")
           Future.failed(h)
         case InitializationError(interval, response) =>
+          logging.error(this, s"JobExecutionError, initializationError ${job.action.name}, ${job.msg.activationId}")
           Future.successful(
             ContainerProxy
               .constructWhiskActivation(job, Some(interval), interval, interval.duration >= actionTimeout, response, instance))
@@ -1003,6 +1007,7 @@ class ContainerProxy(factory: (TransactionId,
     val context = UserContext(job.msg.user)
 
     // Adds logs to the raw activation.
+    //logging.info(this, s"JobExecutionFinishReadingLog for ${job.action.name}, ${job.msg.activationId}")
     val activationWithLogs: Future[Either[ActivationLogReadingError, WhiskActivation]] = activation
       .flatMap { activation =>
         // Skips log collection entirely, if the limit is set to 0
