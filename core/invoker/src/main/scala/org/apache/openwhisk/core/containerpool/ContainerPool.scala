@@ -233,7 +233,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
       // It is guaranteed, that only the first message on the buffer is resent.
-      if ((runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).isEmpty) || isResentFromBuffer) {
+      if (runBuffer.isEmpty || (runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).isEmpty) || isResentFromBuffer) {
         if (isResentFromBuffer) {
           //remove from resent tracking - it may get resent again, or get processed
           resent.update(r.action.name.name, None)
@@ -455,7 +455,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
     runBuffer.foreach { buff =>
         // If buffer has more items, and head has not already been resent, send next one, otherwise get next from feed.
         buff._2.dequeueOption match {
-          case Some((run, _)) => //run the first from buffer
+          case Some((run, _)) => //run the first from buffer, (retrieve the first and the remaining of the elements)
             implicit val tid = run.msg.transid
             //avoid sending dupes
             if (resent.getOrElse(run.action.name.name, None).isEmpty) {

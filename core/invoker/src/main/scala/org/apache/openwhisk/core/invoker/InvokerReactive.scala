@@ -227,6 +227,7 @@ class InvokerReactive(
         action.limits.checkLimits(msg.user)
         action.toExecutableWhiskAction match {
           case Some(executable) =>
+            logging.info(this, s"SendingInvocation to ContaienrPool ${name}, ${msg.activationId}")
             pool ! Run(executable, msg)
             Future.successful(())
           case None =>
