@@ -213,6 +213,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case ResetInvokerEvent() =>
       logging.info(this, "resetting the invoker to startup state")
+      feed ! MessageFeed.Reset
       runBuffer = mutable.Map.empty
       (freePool ++ busyPool ++ prewarmedPool).map(c => (c._1, c._2.corePin)) ++
         prewarmStartingPool.map(c => (c._1, c._2._3)) ++

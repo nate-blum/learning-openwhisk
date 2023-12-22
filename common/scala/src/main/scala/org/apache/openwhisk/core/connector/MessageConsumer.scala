@@ -70,6 +70,8 @@ object MessageFeed {
   /** Steady state message, indicates capacity in downstream process to receive more messages. */
   object Processed
 
+  object Reset
+
   /** Indicates the fill operation has completed. */
   private case class FillCompleted(messages: Seq[(String, Int, Long, Array[Byte])])
 }
@@ -151,6 +153,10 @@ class MessageFeed(description: String,
         goto(DrainingPipeline)
       }
 
+    case Event(Reset, _) =>
+      resetPipeline()
+      stay
+
     case _ => stay
   }
 
@@ -163,6 +169,10 @@ class MessageFeed(description: String,
         goto(FillingPipeline)
       } else stay
 
+    case Event(Reset, _) =>
+      resetPipeline()
+      goto(FillingPipeline)
+
     case _ => stay
   }
 
@@ -171,6 +181,17 @@ class MessageFeed(description: String,
   initialize()
 
   private implicit val ec = context.system.dispatchers.lookup("dispatchers.kafka-dispatcher")
+
+  private def resetPipeline(): Unit = {
+    while (outstandingMessages.nonEmpty) {
+      val (topic, partition, offset, _) = outstandingMessages.head
+      outstandingMessages = outstandingMessages.tail
+
+      if (logHandoff) logging.debug(this, s"discarding $topic[$partition][$offset] (${outstandingMessages.size}/$handlerCapacity)")
+    }
+
+    handlerCapacity = maximumHandlerCapacity
+  }
 
   private def fillPipeline(): Unit = {
     if (outstandingMessages.size <= pipelineFillThreshold) {
