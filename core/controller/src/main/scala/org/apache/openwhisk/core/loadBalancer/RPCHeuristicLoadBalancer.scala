@@ -147,16 +147,16 @@ class RPCHeuristicLoadBalancer(
     // println(lbConfig)
 //    logging.info(this, "thread id: " + Thread.currentThread().getName + ", " + Thread.currentThread().getId)
 
-    logging.info(this, s"Received at ${msg.transid.meta.start}, timeTaken on invocation (${msg.activationId}) before routing: ${Duration.between(msg.transid.meta.start, Instant.now()).toMillis}ms")
+    //logging.info(this, s"Received at ${msg.transid.meta.start}, timeTaken on invocation (${msg.activationId}) before routing: ${Duration.between(msg.transid.meta.start, Instant.now()).toMillis}ms")
     val (res, time) = routingClient.executeRoutingRequest(action.name.name, msg.activationId.toString())
     val invoker: Future[Option[InvokerInstanceId]] = res.map(r => {
-      logging.info(this, s"Routing request finished, took ${Duration.between(time, Instant.now()).toMillis}ms")
+      //logging.info(this, s"Routing request finished, took ${Duration.between(time, Instant.now()).toMillis}ms")
       schedulingState.invokers.find(_.id.instance == r.invokerInstanceId).map(_.id)
     })
 
     invoker flatMap {
       case Some(id: InvokerInstanceId) => // MemoryLimit() and TimeLimit() return singletons - they should be fast enough to be used here
-        logging.info(this, s"found invoker $id")
+        //logging.info(this, s"found invoker $id")
 
         val memoryLimit = action.limits.memory
         val memoryLimitInfo = if (memoryLimit == MemoryLimit()) {

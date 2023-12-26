@@ -8,7 +8,8 @@ from invocation_store import InvocationStore
 from datetime import datetime
 import copy
 
-
+LATENCY_CAP_REWARD = 1_000_00 # in millisecond 10s
+FILTER_LIMIT = 1_000_00 # in millisecond 10s, if an invocation does not respond in 10s, then discard it as a failure
 class Reward:
     def __init__(self, cluster):
         self.cluster = cluster
@@ -146,14 +147,26 @@ class Reward:
             latency_lst_verbose = func_2_latencyListVerbose[func]
             logging.info(
                 f"\n----->Latency_lst for {func}: {latency_lst_verbose[:len(latency_lst_verbose) - num_onthefly]} (Finished), {latency_lst_verbose[(len(latency_lst_verbose) - num_onthefly):]} (Queued)")
-            p99 = np.percentile(latency_lst, SLA_PERCENTAGE)
+            filter_capped_latency_lst = self.filter_and_cap_latency(latency_lst,LATENCY_CAP_REWARD,FILTER_LIMIT,True)
+            if not filter_capped_latency_lst:
+                continue
+            p99 = np.percentile(filter_capped_latency_lst, SLA_PERCENTAGE)
             func_2_tail_latency[func] = p99
             if p99 < func_2_sla[func]:
                 preserve_ratios.append(1)
             else:
                 preserve_ratios.append(func_2_sla[func] / p99)
-        return float(np.mean(
+        return float(np.mean(                           # could be empty(only used for func selection, filtered)  # do not include queued (unfiltered, for state)
             preserve_ratios)) if preserve_ratios else 1, func_2_tail_latency, func_2_invoker2Latency  # bug, mean on []
+        # also modify class property in the Reward class: `self.func_2_invoker2LatencyAll` (includeQueue, unfiltered, for state)
+
+    def filter_and_cap_latency(self, latency_lst, cap, filter_limit, use_or_not): # both are in millisecond
+        if use_or_not:
+            after_filter = [i for i in latency_lst if i < filter_limit] # remove the effect of failure/loss of invocation
+            return [i if i < cap else cap for i in after_filter ]
+        else:
+            return latency_lst
+
 
     def compute_cluster_power_ratio(self, total_pw: float, cluster_peak: float):
         return total_pw / cluster_peak
