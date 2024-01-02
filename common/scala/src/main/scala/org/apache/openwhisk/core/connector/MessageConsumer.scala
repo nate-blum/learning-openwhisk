@@ -155,6 +155,8 @@ class MessageFeed(description: String,
 
     case Event(Reset, _) =>
       resetPipeline()
+      if (shouldFillQueue()) fillPipeline()
+      else logging.error(this, "Should fill pipeline after reset while draining")
       stay
 
     case _ => stay
@@ -174,7 +176,7 @@ class MessageFeed(description: String,
       if (shouldFillQueue()) {
         fillPipeline()
         goto(FillingPipeline)
-      }else {
+      } else {
         logging.error(this, "Should fill pipeline after reset while draining")
         stay
       }
@@ -189,12 +191,12 @@ class MessageFeed(description: String,
   private implicit val ec = context.system.dispatchers.lookup("dispatchers.kafka-dispatcher")
 
   private def resetPipeline(): Unit = {
-//    while (outstandingMessages.nonEmpty) {
-//      val (topic, partition, offset, _) = outstandingMessages.head
-//      outstandingMessages = outstandingMessages.tail
-//
-//      if (logHandoff) logging.debug(this, s"discarding $topic[$partition][$offset] (${outstandingMessages.size}/$handlerCapacity)")
-//    }
+    while (outstandingMessages.nonEmpty) {
+      val (topic, partition, offset, _) = outstandingMessages.head
+      outstandingMessages = outstandingMessages.tail
+
+      if (logHandoff) logging.debug(this, s"Discarding $topic[$partition][$offset] (${outstandingMessages.size}/$handlerCapacity)")
+    }
 
     handlerCapacity = maximumHandlerCapacity
   }
