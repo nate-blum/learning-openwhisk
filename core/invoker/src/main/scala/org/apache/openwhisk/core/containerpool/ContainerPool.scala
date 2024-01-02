@@ -453,7 +453,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */
   def processBufferOrFeed() = {
-    runBuffer.foreach { buff =>
+    if (runBuffer.isEmpty) {
+      feed ! MessageFeed.Processed
+    }else {
+      runBuffer.foreach { buff =>
         // If buffer has more items, and head has not already been resent, send next one, otherwise get next from feed.
         buff._2.dequeueOption match {
           case Some((run, _)) => //run the first from buffer, (retrieve the first and the remaining of the elements)
@@ -469,6 +472,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
           case None => //feed me!
             feed ! MessageFeed.Processed
         }
+      }
     }
   }
 

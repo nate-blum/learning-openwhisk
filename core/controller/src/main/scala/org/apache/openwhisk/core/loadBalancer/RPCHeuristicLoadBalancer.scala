@@ -39,7 +39,7 @@ import org.apache.openwhisk.core.{ConfigKeys, WhiskConfig}
 import org.apache.openwhisk.grpc.ActionStatePerInvoker
 import org.apache.openwhisk.spi.SpiLoader
 
-import java.time.{Duration, Instant}
+//import java.time.{Duration, Instant}
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
