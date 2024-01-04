@@ -272,7 +272,6 @@ class InvokerReactive(
 
   /** Is called when an ActivationMessage is read from Kafka */
   def processActivationMessage(bytes: Array[Byte]): Future[Unit] = {
-    pool ! PrintMetrics("processActivationMessage, InvokerReactive")
     Future(ActivationMessage.parse(new String(bytes, StandardCharsets.UTF_8)))
       .flatMap(Future.fromTry)
       .flatMap { msg =>
