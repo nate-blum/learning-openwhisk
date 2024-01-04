@@ -20,7 +20,7 @@ class EnvConfigs(NamedTuple):
 class Action(NamedTuple):
     container_delta: int
     freq: int = 3000
-    types: list[str] = None
+    type: str = None
     target_load: float = 1.0
 
 
