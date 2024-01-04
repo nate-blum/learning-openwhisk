@@ -202,8 +202,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       sender() ! this.actionStates()
 
     case PrintRunBuffer() =>
-      logging.info(this, s"printing run buffer")
-      runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
+      printCurrentRunBuffer()
+
+    case PrintMetrics(origin) =>
+      printMetrics(origin)
 
     case GetBufferedInvocationsEvent() =>
       sender() ! GetBufferedInvocationsResponse(runBuffer.map(
@@ -360,6 +362,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     // Container is free to take more work
     case NeedWork(warmData: WarmedData) =>
+      printMetrics("need work, warmed data")
       if (!freePool.contains(sender()) && !busyPool.contains(sender())) {
         logging.info(this, s"needWork event, pools do not have container ${sender()}, ${warmData.container.containerId.asString}")
       }else {
@@ -390,12 +393,14 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       }
 
     case NeedWork(data: PreWarmedData) =>
+      printMetrics("need work, prewarmed data")
       logging.info(this, s"need work event, prewarm ${sender()}, ${data.container.containerId.asString}")
       prewarmStartingPool = prewarmStartingPool - sender()
       prewarmedPool = prewarmedPool + (sender() -> data)
       processBufferOrFeed()
 
     case WarmCompleted(data: WarmedData) =>
+      printMetrics("warm completed, warmed data")
       logging.info(this, s"warm completed event ${sender()}, ${data.container.containerId.asString}")
       warmingPool = warmingPool - sender()
       freePool = freePool + (sender() -> data)
@@ -449,6 +454,26 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
     case AdjustPrewarmedContainer =>
       adjustPrewarmedContainer(false, true)
+  }
+
+  def printCurrentRunBuffer() = {
+    logging.info(this, "printing run buffer")
+    runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
+  }
+
+  def printActionStates() = {
+    logging.info(this, "printing action states")
+    this.actionStates()._1.foreach(a => {
+      logging.info(this, s"action: ${a._1.actionName}, state: ${a._1.state}, containers:")
+      a._2.foreach(i => logging.info(this, i._1))
+    })
+  }
+
+  def printMetrics(origin: String) = {
+    logging.info(this, s"------------------------------ IMPORTANT METRICS (${origin}) ------------------------------")
+    printCurrentRunBuffer()
+    printActionStates()
+    logging.info(this, s"------------------------------ IMPORTANT METRICS END (${origin}) ------------------------------")
   }
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */
@@ -913,3 +938,4 @@ case class PrewarmingConfig(initialCount: Int,
 
 case class GetActionStates()
 case class PrintRunBuffer()
+case class PrintMetrics(origin: String)
