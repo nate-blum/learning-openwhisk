@@ -232,6 +232,9 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 //      println(poolConfig)
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
       val isResentFromBuffer = runBuffer.contains(r.action.name.name) && runBuffer(r.action.name.name).dequeueOption.exists(_._1.msg == r.msg)
+      if (!isResentFromBuffer) { // if not resent from buffer, the activation must be a new arrival
+        printMetrics("New Arrival:")
+      }
 
       // Only process request, if there are no other requests waiting for free slots, or if the current request is the
       // next request to process
@@ -458,7 +461,8 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   def printCurrentRunBuffer() = {
     logging.info(this, "printing run buffer")
-    runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
+    //runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
+    runBuffer.foreach(q => logging.info(this, s"${q._1}: ${q._2.length}"))
   }
 
   def printActionStates() = {
