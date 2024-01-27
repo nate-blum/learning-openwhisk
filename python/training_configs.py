@@ -8,7 +8,7 @@ wandb_group_name = "Real2Funcs"
 
 SLA_PERCENTAGE = 99
 SLOT_DURATION_SECOND = 2
-num_envs = 6
+num_envs = 8
 trajectory_len = 40
 
 
@@ -48,7 +48,7 @@ log_mode = 'warn'
 
 reward_setting = {
     'reward_func': 'ratio',  # ratio or naive
-    'latency_factor': 0.6,  # effective only when reward func is ratio, a value in (0,1)
+    'latency_factor': 1,  # effective only when reward func is ratio, a value in (0,1)
     # -------------------------------------------------
     # only for naive reward function
     'naive_pow_coeff': 10,

@@ -460,9 +460,10 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
   }
 
   def printCurrentRunBuffer() = {
-    logging.info(this, "printing run buffer")
+    logging.info(this, "printing run buffer:")
     //runBuffer.foreach(q => q._2.foreach(r => logging.info(this, s"${q._1}: ${r.action.name.name}")))
     runBuffer.foreach(q => logging.info(this, s"${q._1}: ${q._2.length}"))
+    resent.foreach(flag => logging.info(this, s"${flag._1}: ${if (flag._2.isEmpty) "empty" else "hasValue"}"))
   }
 
   def printActionStates() = {
@@ -482,6 +483,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
 
   /** Resend next item in the buffer, or trigger next item in the feed, if no items in the buffer. */
   def processBufferOrFeed() = {
+    resent.foreach(flag =>logging.info(this, s"re-process buffer, resent flag: ${flag._1}: ${if (flag._2.isEmpty) "empty" else "hasValue"}"))
     if (runBuffer.isEmpty) feed ! MessageFeed.Processed
 
     runBuffer.foreach { buff =>
@@ -491,14 +493,16 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
             implicit val tid = run.msg.transid
             //avoid sending dupes
             if (resent.getOrElse(run.action.name.name, None).isEmpty) {
-              logging.info(this, s"re-processing from buffer (${buff._2.length} items in buffer)")
+              logging.info(this, s"re-processing from buffer (${buff._2.length} ${run.action.name.name} items in buffer)")
               resent.update(run.action.name.name, Some(run))
               self ! run
             } else {
               //do not resend the buffer head multiple times (may reach this point from multiple messages, before the buffer head is re-processed)
+              logging.info(this, s"re-process from buffer, do not resend the buffer, ${run.action.name.name}")
             }
           case None => //feed me!
             feed ! MessageFeed.Processed
+            logging.info(this, s"re-process from buffer, empty buffer")
         }
     }
   }

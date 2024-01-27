@@ -8,8 +8,9 @@ from invocation_store import InvocationStore
 from datetime import datetime
 import copy
 
-LATENCY_CAP_REWARD = 1_000_00 # in millisecond 10s
-FILTER_LIMIT = 1_000_00 # in millisecond 10s, if an invocation does not respond in 10s, then discard it as a failure
+LATENCY_CAP_REWARD = 80_000 # in millisecond 30s
+FILTER_LIMIT = 60_000 # in millisecond 30s, if an invocation does not respond in 30s, then discard it as a failure
+WHETHER_USE_FILTER = True
 class Reward:
     def __init__(self, cluster):
         self.cluster = cluster
@@ -147,7 +148,7 @@ class Reward:
             latency_lst_verbose = func_2_latencyListVerbose[func]
             logging.info(
                 f"\n----->Latency_lst for {func}: {latency_lst_verbose[:len(latency_lst_verbose) - num_onthefly]} (Finished), {latency_lst_verbose[(len(latency_lst_verbose) - num_onthefly):]} (Queued)")
-            filter_capped_latency_lst = self.filter_and_cap_latency(latency_lst,LATENCY_CAP_REWARD,FILTER_LIMIT,True)
+            filter_capped_latency_lst = self.filter_and_cap_latency(latency_lst,LATENCY_CAP_REWARD,FILTER_LIMIT,WHETHER_USE_FILTER)
             if not filter_capped_latency_lst:
                 continue
             p99 = np.percentile(filter_capped_latency_lst, SLA_PERCENTAGE)
@@ -161,6 +162,7 @@ class Reward:
         # also modify class property in the Reward class: `self.func_2_invoker2LatencyAll` (includeQueue, unfiltered, for state)
 
     def filter_and_cap_latency(self, latency_lst, cap, filter_limit, use_or_not): # both are in millisecond
+        # only apply for reward, does not apply to input state
         if use_or_not:
             after_filter = [i for i in latency_lst if i < filter_limit] # remove the effect of failure/loss of invocation
             return [i if i < cap else cap for i in after_filter ]
